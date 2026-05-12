@@ -1,28 +1,41 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { newGuideSchema } from "@/features/guides/types";
 import { makeGuideSlug } from "@/lib/slug";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 export const Route = createFileRoute("/_authenticated/guides/new")({
   component: NewGuide,
 });
 
+type NewGuideValues = z.infer<typeof newGuideSchema>;
+
 function NewGuide() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [title, setTitle] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const form = useForm<NewGuideValues>({
+    resolver: zodResolver(newGuideSchema),
+    defaultValues: { title: "" },
+  });
+
+  const onSubmit = async ({ title }: NewGuideValues) => {
     if (!user) return;
-    setLoading(true);
     const { data, error } = await supabase
       .from("guides")
       .insert({
@@ -32,7 +45,7 @@ function NewGuide() {
       })
       .select("id")
       .single();
-    setLoading(false);
+
     if (error || !data) {
       toast.error(error?.message ?? "Failed to create guide");
       return;
@@ -47,21 +60,30 @@ function NewGuide() {
           <CardTitle>New guide</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                required
-                placeholder="e.g. Set 12 Reroll Lillia"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Set 14 Reroll Jinx" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading || !title.trim()}>
-              {loading ? "Creating..." : "Create guide"}
-            </Button>
-          </form>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={form.formState.isSubmitting}
+              >
+                {form.formState.isSubmitting ? "Creating..." : "Create guide"}
+              </Button>
+            </form>
+          </Form>
         </CardContent>
       </Card>
     </div>

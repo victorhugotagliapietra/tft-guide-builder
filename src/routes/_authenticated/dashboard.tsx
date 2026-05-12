@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Plus, Globe, Lock } from "lucide-react";
+import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import type { GuideSummary } from "@/features/guides/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,21 +13,14 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type GuideRow = {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  tft_set: string;
-  patch: string;
-  difficulty: "easy" | "medium" | "hard";
-  is_public: boolean;
-  updated_at: string;
-};
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ok"; guides: GuideSummary[] };
 
 function Dashboard() {
   const { user } = useAuth();
-  const [guides, setGuides] = useState<GuideRow[] | null>(null);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
     if (!user) return;
@@ -34,7 +29,13 @@ function Dashboard() {
       .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at")
       .eq("author_id", user.id)
       .order("updated_at", { ascending: false })
-      .then(({ data }) => setGuides((data as GuideRow[]) ?? []));
+      .then(({ data, error }) => {
+        if (error) {
+          setState({ status: "error", message: error.message });
+          return;
+        }
+        setState({ status: "ok", guides: (data as GuideSummary[]) ?? [] });
+      });
   }, [user]);
 
   return (
@@ -53,9 +54,15 @@ function Dashboard() {
         </Button>
       </div>
 
-      {guides === null ? (
+      {state.status === "loading" && (
         <p className="text-muted-foreground">Loading...</p>
-      ) : guides.length === 0 ? (
+      )}
+
+      {state.status === "error" && (
+        <p className="text-destructive text-sm">{state.message}</p>
+      )}
+
+      {state.status === "ok" && state.guides.length === 0 && (
         <Card>
           <CardContent className="py-16 text-center">
             <p className="text-muted-foreground mb-4">No guides yet.</p>
@@ -64,9 +71,11 @@ function Dashboard() {
             </Button>
           </CardContent>
         </Card>
-      ) : (
+      )}
+
+      {state.status === "ok" && state.guides.length > 0 && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {guides.map((g) => (
+          {state.guides.map((g) => (
             <Link key={g.id} to="/guides/$id/edit" params={{ id: g.id }}>
               <Card className="hover:border-primary/50 transition-colors h-full">
                 <CardHeader>
@@ -74,7 +83,7 @@ function Dashboard() {
                     <CardTitle className="text-lg leading-tight">{g.title}</CardTitle>
                     {g.is_public ? (
                       <Badge variant="default" className="shrink-0">
-                        <Globe className="h-3 w-3 mr-1" /> Public
+                        <Globe className="h-3 w-3 mr-1" /> Published
                       </Badge>
                     ) : (
                       <Badge variant="secondary" className="shrink-0">
@@ -91,6 +100,9 @@ function Dashboard() {
                 <CardContent>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {g.description || "No description yet."}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Updated {format(new Date(g.updated_at), "MMM d, yyyy")}
                   </p>
                 </CardContent>
               </Card>
