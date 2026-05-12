@@ -14,7 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      guides: {
+        Row: {
+          author_id: string
+          board_steps: Json
+          created_at: string
+          description: string
+          difficulty: Database["public"]["Enums"]["guide_difficulty"]
+          final_comp_notes: string
+          id: string
+          is_public: boolean
+          patch: string
+          playstyle: string
+          slug: string
+          tft_set: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          board_steps?: Json
+          created_at?: string
+          description?: string
+          difficulty?: Database["public"]["Enums"]["guide_difficulty"]
+          final_comp_notes?: string
+          id?: string
+          is_public?: boolean
+          patch?: string
+          playstyle?: string
+          slug: string
+          tft_set?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          board_steps?: Json
+          created_at?: string
+          description?: string
+          difficulty?: Database["public"]["Enums"]["guide_difficulty"]
+          final_comp_notes?: string
+          id?: string
+          is_public?: boolean
+          patch?: string
+          playstyle?: string
+          slug?: string
+          tft_set?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +100,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      guide_difficulty: "easy" | "medium" | "hard"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +227,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      guide_difficulty: ["easy", "medium", "hard"],
+    },
   },
 } as const
