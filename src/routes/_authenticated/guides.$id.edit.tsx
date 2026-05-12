@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Globe, Lock, Trash2, ExternalLink } from "lucide-react";
+import { Globe, Lock, Trash2, ExternalLink, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { guideFormSchema, DIFFICULTIES, type GuideFormValues } from "@/features/guides/types";
@@ -173,11 +173,27 @@ function EditGuide() {
         </div>
         <div className="flex gap-2">
           {isPublic && slug && (
-            <Button asChild variant="outline" size="sm">
-              <Link to="/g/$slug" params={{ slug }}>
-                <ExternalLink className="h-4 w-4 mr-1" /> View public
-              </Link>
-            </Button>
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/g/$slug" params={{ slug }}>
+                  <ExternalLink className="h-4 w-4 mr-1" /> View public
+                </Link>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const url = `${window.location.origin}/g/${slug}`;
+                  navigator.clipboard
+                    .writeText(url)
+                    .then(() => toast.success("Link copied!"))
+                    .catch(() => toast.error("Failed to copy link"));
+                }}
+              >
+                <Copy className="h-4 w-4 mr-1" /> Copy link
+              </Button>
+            </>
           )}
           <AlertDialog>
             <AlertDialogTrigger asChild>

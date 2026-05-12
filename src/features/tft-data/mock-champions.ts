@@ -40,6 +40,7 @@ export const MOCK_CHAMPIONS: TFTChampion[] = [
 ];
 
 export const COST_COLORS: Record<number, { bg: string; text: string; ring: string }> = {
+  0: { bg: "bg-zinc-700",   text: "text-zinc-300",  ring: "ring-zinc-500"   },
   1: { bg: "bg-slate-500",  text: "text-white",     ring: "ring-slate-400"  },
   2: { bg: "bg-green-700",  text: "text-white",     ring: "ring-green-500"  },
   3: { bg: "bg-blue-700",   text: "text-white",     ring: "ring-blue-500"   },

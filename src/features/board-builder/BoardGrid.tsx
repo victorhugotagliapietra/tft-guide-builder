@@ -1,62 +1,88 @@
 import { useState } from "react";
-import { X, MoveRight } from "lucide-react";
+import { X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
 import { COST_COLORS } from "@/features/tft-data/mock-champions";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTChampion } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
-import { ChampionPicker } from "./ChampionPicker";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// ---------------------------------------------------------------------------
+// Hex geometry
+// ---------------------------------------------------------------------------
+
+const HEX_W = 64;
+const HEX_H = 74;
+const ROW_PITCH = Math.round(HEX_H * 0.75); // 56px — rows overlap by 25%
+const GAP = 3;
+const CELL_W = HEX_W - GAP;
+const CELL_H = HEX_H - GAP;
+const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+
+export const HEX_CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2; // 480
+export const HEX_CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H; // 242
+
+// ---------------------------------------------------------------------------
+// Sub-component: single champion display (owns img-failed state)
+// ---------------------------------------------------------------------------
+
+function ChampionDisplay({
+  champion,
+  starLevel,
+}: {
+  champion: TFTChampion;
+  starLevel: number;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  return (
+    <>
+      {champion.iconUrl && !imgFailed ? (
+        <img
+          src={champion.iconUrl}
+          alt={champion.name}
+          className="w-9 h-9 object-cover"
+          loading="lazy"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <span className="text-[8px] leading-tight text-center px-0.5 truncate w-full">
+          {champion.name.slice(0, 7)}
+        </span>
+      )}
+      <span className="text-[8px] opacity-60 leading-none mt-0.5">{starLevel}★</span>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
 type Props = {
   units: BoardUnit[];
-  onAddUnit: (position: number, champion: TFTChampion) => void;
-  onMoveUnit: (fromPos: number, toPos: number) => void;
-  onRemoveUnit: (position: number) => void;
+  selectedPos: number | null;         // hex selected for MOVING
+  pendingChampion: TFTChampion | null; // champion waiting to be placed
+  onHexClick: (pos: number) => void;
+  onRemove: (pos: number) => void;
+  onCancel: () => void;
 };
 
-export function BoardGrid({ units, onAddUnit, onMoveUnit, onRemoveUnit }: Props) {
-  const [selectedPos, setSelectedPos] = useState<number | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerHex, setPickerHex] = useState<number | null>(null);
+// ---------------------------------------------------------------------------
+// BoardGrid
+// ---------------------------------------------------------------------------
+
+export function BoardGrid({
+  units,
+  selectedPos,
+  pendingChampion,
+  onHexClick,
+  onRemove,
+  onCancel,
+}: Props) {
   const { championMap } = useTFTData();
-
   const unitMap = new Map(units.map((u) => [u.position, u]));
-  const occupiedKeys = units.map((u) => u.championKey);
-
-  function handleHexClick(pos: number) {
-    const unit = unitMap.get(pos);
-
-    if (selectedPos !== null) {
-      if (pos === selectedPos) {
-        setSelectedPos(null);
-        return;
-      }
-      if (unit) {
-        setSelectedPos(pos);
-        return;
-      }
-      onMoveUnit(selectedPos, pos);
-      setSelectedPos(null);
-      return;
-    }
-
-    if (unit) {
-      setSelectedPos(pos);
-    } else {
-      setPickerHex(pos);
-      setPickerOpen(true);
-    }
-  }
-
-  function handleChampionSelect(champion: TFTChampion) {
-    if (pickerHex !== null) {
-      onAddUnit(pickerHex, champion);
-    }
-    setPickerOpen(false);
-    setPickerHex(null);
-  }
 
   const selectedUnit = selectedPos !== null ? unitMap.get(selectedPos) : undefined;
   const selectedChampion = selectedUnit
@@ -65,110 +91,110 @@ export function BoardGrid({ units, onAddUnit, onMoveUnit, onRemoveUnit }: Props)
 
   return (
     <div className="space-y-2">
-      <div className="space-y-1">
-        {Array.from({ length: BOARD_ROWS }, (_, row) => (
-          <div key={row} className="flex gap-1">
-            {Array.from({ length: BOARD_COLS }, (_, col) => {
-              const pos = coordsToPosition(row, col);
-              const unit = unitMap.get(pos);
-              const champion = unit ? championMap.get(unit.championKey) : undefined;
-              const colors = champion ? COST_COLORS[champion.cost] ?? COST_COLORS[1] : null;
-              const isSelected = selectedPos === pos;
-              const isMoveTarget = selectedPos !== null && !unit;
+      {/* Hex grid */}
+      <div
+        className="relative"
+        style={{ width: HEX_CONTAINER_W, height: HEX_CONTAINER_H }}
+      >
+        {Array.from({ length: BOARD_ROWS }, (_, row) =>
+          Array.from({ length: BOARD_COLS }, (_, col) => {
+            const pos = coordsToPosition(row, col);
+            const unit = unitMap.get(pos);
+            const champion = unit ? championMap.get(unit.championKey) : undefined;
+            const colors = champion
+              ? (COST_COLORS[champion.cost] ?? COST_COLORS[1])
+              : null;
 
-              return (
-                <button
-                  key={pos}
-                  type="button"
-                  onClick={() => handleHexClick(pos)}
-                  className={cn(
-                    "w-12 h-12 rounded-md border text-[10px] font-medium flex flex-col items-center justify-center transition-all select-none shrink-0",
-                    unit
-                      ? [colors?.bg, colors?.text, "border-transparent"]
-                      : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/60",
-                    isSelected && "ring-2 ring-offset-1 ring-primary ring-offset-background scale-105",
-                    isMoveTarget && "border-dashed border-primary/60 hover:bg-primary/10"
-                  )}
-                  title={champion ? champion.name : `Hex ${pos}`}
-                >
-                  {champion ? (
-                    <>
-                      {champion.iconUrl ? (
-                        <img
-                          src={champion.iconUrl}
-                          alt={champion.name}
-                          className="w-8 h-8 rounded object-cover"
-                          loading="lazy"
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        />
-                      ) : (
-                        <span className="truncate w-full text-center px-0.5 leading-tight text-[10px]">
-                          {champion.name.length > 6
-                            ? champion.name.slice(0, 6)
-                            : champion.name}
-                        </span>
-                      )}
-                      <span className="opacity-60 text-[9px]">{champion.cost}★</span>
-                    </>
-                  ) : (
-                    <span className="opacity-30 text-[8px]">{pos}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+            const isSelected = selectedPos === pos;
+            const isMovingTarget = selectedPos !== null && !unit && !pendingChampion;
+            const isPlaceTarget = pendingChampion !== null && !unit;
+
+            const left = col * HEX_W + (row % 2 === 1 ? HEX_W / 2 : 0) + GAP / 2;
+            const top = row * ROW_PITCH + GAP / 2;
+
+            return (
+              <button
+                key={pos}
+                type="button"
+                onClick={() => onHexClick(pos)}
+                style={{
+                  position: "absolute",
+                  left,
+                  top,
+                  width: CELL_W,
+                  height: CELL_H,
+                  clipPath: CLIP,
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center transition-all select-none",
+                  champion
+                    ? [colors?.bg, colors?.text]
+                    : "bg-muted/20 hover:bg-muted/40",
+                  isSelected && "brightness-125",
+                  isPlaceTarget && "bg-primary/20 hover:bg-primary/35 cursor-crosshair",
+                  isMovingTarget && "hover:bg-primary/20 cursor-crosshair"
+                )}
+                title={
+                  champion
+                    ? `${champion.name} ${champion.cost}★`
+                    : `Hex ${pos}`
+                }
+              >
+                {champion ? (
+                  <ChampionDisplay
+                    champion={champion}
+                    starLevel={unit!.starLevel}
+                  />
+                ) : isPlaceTarget ? (
+                  <span className="text-primary/50 text-lg leading-none">+</span>
+                ) : null}
+              </button>
+            );
+          })
+        )}
       </div>
 
-      {/* Status bar when a unit is selected */}
-      {selectedUnit && selectedChampion && (
+      {/* Status bar */}
+      {(selectedUnit || pendingChampion) && (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-sm">
-          <MoveRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground flex-1">
-            <span className="font-medium text-foreground">{selectedChampion.name}</span>
-            {" "}selected — click an empty hex to move
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="h-6 px-2 text-xs"
-            onClick={() => {
-              onRemoveUnit(selectedPos!);
-              setSelectedPos(null);
-            }}
-          >
-            <X className="h-3 w-3 mr-1" />
-            Remove
-          </Button>
+          {selectedUnit && selectedChampion ? (
+            <span className="flex-1 text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {selectedChampion.name}
+              </span>{" "}
+              selected — click an empty hex to move
+            </span>
+          ) : pendingChampion ? (
+            <span className="flex-1 text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {pendingChampion.name}
+              </span>{" "}
+              — click an empty hex to place
+            </span>
+          ) : null}
+          {selectedUnit && (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-6 px-2 text-xs"
+              onClick={() => onRemove(selectedPos!)}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Remove
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
             variant="ghost"
             className="h-6 px-2 text-xs"
-            onClick={() => setSelectedPos(null)}
+            onClick={onCancel}
           >
             Cancel
           </Button>
         </div>
       )}
-
-      {/* Empty board hint */}
-      {units.length === 0 && (
-        <p className="text-xs text-muted-foreground">
-          Click any hex to add a champion.
-        </p>
-      )}
-
-      <ChampionPicker
-        open={pickerOpen}
-        onOpenChange={(open) => {
-          setPickerOpen(open);
-          if (!open) setPickerHex(null);
-        }}
-        onSelect={handleChampionSelect}
-        occupiedKeys={occupiedKeys}
-      />
     </div>
   );
 }

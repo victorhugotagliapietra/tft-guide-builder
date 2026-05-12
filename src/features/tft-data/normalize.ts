@@ -96,16 +96,20 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
   const latestSet = pickLatestSet(sets);
 
   const champions: TFTChampion[] = (latestSet?.champions ?? [])
-    .filter((c) => c.cost >= 1 && c.cost <= 5 && c.squareIconPath && c.name)
-    .map((c) => ({
-      apiName: c.apiName,
-      characterName: c.characterName ?? c.apiName,
-      name: c.name,
-      cost: c.cost,
-      traits: c.traits ?? [],
-      squareIconPath: c.squareIconPath,
-      iconUrl: championIconUrl(c.squareIconPath),
-    }));
+    .filter((c) => c.cost >= 1 && c.cost <= 5 && c.name)
+    .map((c) => {
+      // Prefer squareIconPath; fall back to tileIconPath for newer sets
+      const iconPath = c.squareIconPath || c.tileIconPath || "";
+      return {
+        apiName: c.apiName,
+        characterName: c.characterName ?? c.apiName,
+        name: c.name,
+        cost: c.cost,
+        traits: c.traits ?? [],
+        squareIconPath: iconPath,
+        iconUrl: championIconUrl(iconPath),
+      };
+    });
 
   const traits: TFTTrait[] = (latestSet?.traits ?? [])
     .filter((t) => t.icon && t.apiName && t.name)

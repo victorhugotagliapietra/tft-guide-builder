@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Link as LinkIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Link as LinkIcon, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -250,19 +250,36 @@ function PublicGuide() {
       <main className="flex-1 mx-auto max-w-3xl w-full px-4 py-10 space-y-8">
         {/* Guide header */}
         <header className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {guide.tft_set && (
-              <Badge variant="secondary">Set {guide.tft_set}</Badge>
-            )}
-            {guide.patch && (
-              <Badge variant="outline">Patch {guide.patch}</Badge>
-            )}
-            <Badge variant="outline">
-              {DIFFICULTY_LABELS[guide.difficulty] ?? guide.difficulty}
-            </Badge>
-            {guide.playstyle && (
-              <Badge variant="outline">{guide.playstyle}</Badge>
-            )}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {guide.tft_set && (
+                <Badge variant="secondary">Set {guide.tft_set}</Badge>
+              )}
+              {guide.patch && (
+                <Badge variant="outline">Patch {guide.patch}</Badge>
+              )}
+              <Badge variant="outline">
+                {DIFFICULTY_LABELS[guide.difficulty] ?? guide.difficulty}
+              </Badge>
+              {guide.playstyle && (
+                <Badge variant="outline">{guide.playstyle}</Badge>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={() =>
+                navigator.clipboard
+                  .writeText(window.location.href)
+                  .then(() => toast.success("Link copied!"))
+                  .catch(() => toast.error("Failed to copy link"))
+              }
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copy link
+            </Button>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">{guide.title}</h1>
           {guide.description && (
