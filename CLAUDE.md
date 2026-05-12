@@ -32,7 +32,7 @@ This application allows users to create a guide with optional progressive board 
 
 \- Level 8 version without legendary units
 
-\- Final capped board
+\- Final capped board 
 
 
 
