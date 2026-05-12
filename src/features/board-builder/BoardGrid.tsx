@@ -62,11 +62,15 @@ function ChampionDisplay({
 
 type Props = {
   units: BoardUnit[];
-  selectedPos: number | null;         // hex selected for MOVING
-  pendingChampion: TFTChampion | null; // champion waiting to be placed
+  selectedPos: number | null;          // hex selected for click-to-move
+  pendingChampion: TFTChampion | null; // champion waiting to be click-placed
   onHexClick: (pos: number) => void;
   onRemove: (pos: number) => void;
   onCancel: () => void;
+  /** Called when a champion is dropped onto a hex via drag-and-drop.
+   *  fromPos is set when the source is an existing board unit (move/swap),
+   *  undefined when the source is the champion panel (place). */
+  onDrop: (pos: number, apiName: string, fromPos: number | undefined) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -80,6 +84,7 @@ export function BoardGrid({
   onHexClick,
   onRemove,
   onCancel,
+  onDrop,
 }: Props) {
   const { championMap } = useTFTData();
   const unitMap = new Map(units.map((u) => [u.position, u]));
@@ -88,6 +93,8 @@ export function BoardGrid({
   const selectedChampion = selectedUnit
     ? championMap.get(selectedUnit.championKey)
     : undefined;
+
+  const [dragOverPos, setDragOverPos] = useState<number | null>(null);
 
   return (
     <div className="space-y-2">
@@ -108,6 +115,7 @@ export function BoardGrid({
             const isSelected = selectedPos === pos;
             const isMovingTarget = selectedPos !== null && !unit && !pendingChampion;
             const isPlaceTarget = pendingChampion !== null && !unit;
+            const isDragOver = dragOverPos === pos;
 
             const left = col * HEX_W + (row % 2 === 1 ? HEX_W / 2 : 0) + GAP / 2;
             const top = row * ROW_PITCH + GAP / 2;
@@ -116,7 +124,35 @@ export function BoardGrid({
               <button
                 key={pos}
                 type="button"
+                draggable={!!unit}
                 onClick={() => onHexClick(pos)}
+                onDragStart={
+                  unit
+                    ? (e) => {
+                        e.dataTransfer.setData(
+                          "text/plain",
+                          JSON.stringify({ apiName: unit.championKey, fromPos: pos })
+                        );
+                        e.dataTransfer.effectAllowed = "move";
+                      }
+                    : undefined
+                }
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDragOverPos(pos);
+                }}
+                onDragLeave={() => setDragOverPos(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverPos(null);
+                  try {
+                    const payload = JSON.parse(e.dataTransfer.getData("text/plain"));
+                    onDrop(pos, payload.apiName, payload.fromPos);
+                  } catch {
+                    // malformed payload — ignore
+                  }
+                }}
                 style={{
                   position: "absolute",
                   left,
@@ -130,9 +166,10 @@ export function BoardGrid({
                   champion
                     ? [colors?.bg, colors?.text]
                     : "bg-muted/20 hover:bg-muted/40",
-                  isSelected && "brightness-125",
+                  isSelected && "brightness-125 ring-2 ring-white/60",
                   isPlaceTarget && "bg-primary/20 hover:bg-primary/35 cursor-crosshair",
-                  isMovingTarget && "hover:bg-primary/20 cursor-crosshair"
+                  isMovingTarget && "hover:bg-primary/20 cursor-crosshair",
+                  isDragOver && "brightness-150 ring-2 ring-primary/70"
                 )}
                 title={
                   champion
@@ -145,7 +182,7 @@ export function BoardGrid({
                     champion={champion}
                     starLevel={unit!.starLevel}
                   />
-                ) : isPlaceTarget ? (
+                ) : isPlaceTarget || isDragOver ? (
                   <span className="text-primary/50 text-lg leading-none">+</span>
                 ) : null}
               </button>

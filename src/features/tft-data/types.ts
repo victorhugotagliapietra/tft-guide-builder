@@ -1,11 +1,12 @@
 export type TFTChampion = {
-  apiName: string;        // e.g. "TFT14_Jinx" — key used in board_steps JSON
+  apiName: string;        // e.g. "TFT17_Jinx" — key used in board_steps JSON
   characterName: string;  // game character record name (sometimes differs from apiName)
   name: string;           // display name, e.g. "Jinx"
   cost: number;           // 1–5
   traits: string[];       // trait apiNames for this champion
-  squareIconPath: string; // raw path from CommunityDragon, e.g. "ASSETS/Characters/..."
+  squareIconPath: string; // raw path from CommunityDragon, e.g. "lol-game-data/assets/ASSETS/..."
   iconUrl: string;        // resolved CDN URL, ready to use in <img src>
+  plannerId?: number;     // numeric ID used by TFT Team Planner
 };
 
 export type TFTItem = {

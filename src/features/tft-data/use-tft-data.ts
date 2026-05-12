@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TFT_DATA_URL } from "./cdn";
-import { normalizeSetData, type RawTFTData } from "./normalize";
+import { TFT_DATA_URL, TFT_TEAM_PLANNER_URL } from "./cdn";
+import { normalizeSetData, enrichWithPlannerData, type RawTFTData, type RawPlannerData } from "./normalize";
 import type { TFTSetData, TFTChampion } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
@@ -34,8 +34,14 @@ async function fetchTFTData(): Promise<TFTSetData> {
   return normalizeSetData(raw);
 }
 
+async function fetchPlannerData(): Promise<RawPlannerData> {
+  const res = await fetch(TFT_TEAM_PLANNER_URL);
+  if (!res.ok) throw new Error(`Planner fetch failed: ${res.status}`);
+  return res.json();
+}
+
 /**
- * Fetches and normalizes TFT champion / item / trait data from CommunityDragon.
+ * Fetches and normalizes TFT Set 17 champion / item / trait data from CommunityDragon.
  *
  * - Data is cached for 1 hour (staleTime) and kept in memory for 24 hours.
  * - When data is unavailable (loading or error), `champions` falls back to
@@ -44,7 +50,7 @@ async function fetchTFTData(): Promise<TFTSetData> {
  * - `championMap` is a pre-built Map<apiName, TFTChampion> for O(1) lookup.
  */
 export function useTFTData() {
-  const query = useQuery<TFTSetData>({
+  const tftQuery = useQuery<TFTSetData>({
     queryKey: ["tft-data"],
     queryFn: fetchTFTData,
     staleTime: 1000 * 60 * 60,
@@ -52,8 +58,21 @@ export function useTFTData() {
     retry: 2,
   });
 
-  const baseChampions: TFTChampion[] =
-    query.data?.champions ?? MOCK_CHAMPIONS;
+  const plannerQuery = useQuery<RawPlannerData>({
+    queryKey: ["tft-planner-data"],
+    queryFn: fetchPlannerData,
+    staleTime: 1000 * 60 * 60,
+    gcTime: 1000 * 60 * 60 * 24,
+    retry: 2,
+  });
+
+  const baseChampions: TFTChampion[] = useMemo(() => {
+    const raw = tftQuery.data?.champions ?? MOCK_CHAMPIONS;
+    if (tftQuery.data && plannerQuery.data) {
+      return enrichWithPlannerData(raw, plannerQuery.data);
+    }
+    return raw;
+  }, [tftQuery.data, plannerQuery.data]);
 
   // Dummies always come last regardless of live-data state
   const champions: TFTChampion[] = useMemo(
@@ -67,13 +86,13 @@ export function useTFTData() {
   );
 
   return {
-    ...query,
+    ...tftQuery,
     champions,
     championMap,
-    items: query.data?.items ?? [],
-    traits: query.data?.traits ?? [],
-    setNumber: query.data?.setNumber ?? 0,
-    setName: query.data?.setName ?? "",
-    isUsingMockData: !query.data,
+    items: tftQuery.data?.items ?? [],
+    traits: tftQuery.data?.traits ?? [],
+    setNumber: tftQuery.data?.setNumber ?? 17,
+    setName: tftQuery.data?.setName ?? "",
+    isUsingMockData: !tftQuery.data,
   };
 }

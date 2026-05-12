@@ -46,20 +46,19 @@ export type RawTFTData = {
   items?: RawItem[];
 };
 
+export type RawPlannerChampion = {
+  id: number;
+  apiName: string;
+  name: string;
+};
+
+export type RawPlannerData = RawPlannerChampion[];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Pick the latest set that has real champion data (≥ 10 champions).
- * Falls back to the last entry if nothing qualifies.
- */
-function pickLatestSet(sets: RawSet[]): RawSet | undefined {
-  for (let i = sets.length - 1; i >= 0; i--) {
-    if ((sets[i].champions?.length ?? 0) >= 10) return sets[i];
-  }
-  return sets.at(-1);
-}
+const SET17_PREFIX = "TFT17_";
 
 /** Decide whether an item should appear in the builder. */
 function isUsableItem(item: RawItem): boolean {
@@ -68,9 +67,7 @@ function isUsableItem(item: RawItem): boolean {
   if (api.includes("_placeholder")) return false;
   if (api.includes("Tutorial")) return false;
   if (api.includes("Debug")) return false;
-  // Augments are not equippable items in the board sense
   if (api.includes("Augment")) return false;
-  // Radiant / Ornn items are valid — keep them
   return true;
 }
 
@@ -81,10 +78,24 @@ function classifyItem(item: RawItem): { isComponent: boolean; isEmblem: boolean 
     item.apiName.toLowerCase().includes("emblem") ||
     (item.associatedTraits?.length ?? 0) > 0;
 
-  // A component has no composition (it IS one of the building blocks)
   const isComponent = !isEmblem && (item.composition?.length ?? 0) === 0;
 
   return { isComponent, isEmblem };
+}
+
+// ---------------------------------------------------------------------------
+// Planner data enrichment
+// ---------------------------------------------------------------------------
+
+export function enrichWithPlannerData(
+  champions: TFTChampion[],
+  plannerData: RawPlannerData
+): TFTChampion[] {
+  const plannerMap = new Map(plannerData.map((p) => [p.apiName, p.id]));
+  return champions.map((c) => {
+    const plannerId = plannerMap.get(c.apiName);
+    return plannerId !== undefined ? { ...c, plannerId } : c;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -93,13 +104,39 @@ function classifyItem(item: RawItem): { isComponent: boolean; isEmblem: boolean 
 
 export function normalizeSetData(raw: RawTFTData): TFTSetData {
   const sets = raw.setData ?? [];
-  const latestSet = pickLatestSet(sets);
 
-  const champions: TFTChampion[] = (latestSet?.champions ?? [])
-    .filter((c) => c.cost >= 1 && c.cost <= 5 && c.name)
+  // Collect all champions across all sets, deduplicate by apiName
+  const seen = new Set<string>();
+  const allChampions: RawChampion[] = [];
+  for (const set of sets) {
+    for (const c of set.champions ?? []) {
+      if (!seen.has(c.apiName)) {
+        seen.add(c.apiName);
+        allChampions.push(c);
+      }
+    }
+  }
+
+  let skippedCount = 0;
+
+  const champions: TFTChampion[] = allChampions
+    .filter((c) => {
+      if (!c.apiName.startsWith(SET17_PREFIX)) {
+        skippedCount++;
+        return false;
+      }
+      if (c.cost < 1 || c.cost > 5 || !c.name) {
+        skippedCount++;
+        return false;
+      }
+      return true;
+    })
     .map((c) => {
-      // Prefer squareIconPath; fall back to tileIconPath for newer sets
       const iconPath = c.squareIconPath || c.tileIconPath || "";
+      const iconUrl = championIconUrl(iconPath);
+      if (!iconPath) {
+        console.warn(`[TFT] Missing icon for ${c.apiName}`);
+      }
       return {
         apiName: c.apiName,
         characterName: c.characterName ?? c.apiName,
@@ -107,11 +144,23 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
         cost: c.cost,
         traits: c.traits ?? [],
         squareIconPath: iconPath,
-        iconUrl: championIconUrl(iconPath),
+        iconUrl,
       };
     });
 
-  const traits: TFTTrait[] = (latestSet?.traits ?? [])
+  if (skippedCount > 0) {
+    console.info(`[TFT] Skipped ${skippedCount} champions (not TFT17_ or invalid)`);
+  }
+  console.info(`[TFT] Loaded ${champions.length} Set 17 champions`);
+
+  // Find the Set 17 set entry for traits and metadata
+  const set17 = sets.find(
+    (s) =>
+      s.number === 17 ||
+      (s.champions ?? []).some((c) => c.apiName.startsWith(SET17_PREFIX))
+  );
+
+  const traits: TFTTrait[] = (set17?.traits ?? [])
     .filter((t) => t.icon && t.apiName && t.name)
     .map((t) => ({
       apiName: t.apiName,
@@ -136,8 +185,8 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     });
 
   return {
-    setNumber: latestSet?.number ?? 0,
-    setName: latestSet?.name ?? "",
+    setNumber: set17?.number ?? 17,
+    setName: set17?.name ?? "Set 17",
     champions,
     traits,
     items,

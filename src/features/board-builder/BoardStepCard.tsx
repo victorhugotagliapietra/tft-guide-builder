@@ -67,13 +67,21 @@ function ChampionTile({
   return (
     <button
       type="button"
+      draggable
       onClick={() => onSelect(champion)}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(
+          "text/plain",
+          JSON.stringify({ apiName: champion.apiName })
+        );
+        e.dataTransfer.effectAllowed = "copy";
+      }}
       title={champion.name}
       className={cn(
-        "flex flex-col items-center gap-0.5 rounded-md p-1 text-[10px] font-medium transition-all w-14",
+        "flex flex-col items-center gap-0.5 rounded-md p-1 text-[10px] font-medium transition-all w-14 cursor-grab active:cursor-grabbing",
         colors.bg,
         colors.text,
-        isOccupied && "opacity-30 cursor-not-allowed",
+        isOccupied && "opacity-30",
         isPending && "ring-2 ring-white scale-105 brightness-110"
       )}
     >
@@ -81,7 +89,7 @@ function ChampionTile({
         <img
           src={champion.iconUrl}
           alt={champion.name}
-          className="w-10 h-10 rounded object-cover"
+          className="w-10 h-10 rounded object-cover pointer-events-none"
           loading="lazy"
           onError={() => setImgFailed(true)}
         />
@@ -326,6 +334,53 @@ export function BoardStepCard({
     setPendingChampion(null);
   }
 
+  function handleDrop(pos: number, apiName: string, fromPos: number | undefined) {
+    if (fromPos !== undefined) {
+      // Moving or swapping an existing board unit
+      if (pos === fromPos) return;
+      const targetUnit = step.units.find((u) => u.position === pos);
+      if (targetUnit) {
+        // Swap the two positions
+        onUpdate(step.id, {
+          units: step.units.map((u) => {
+            if (u.position === fromPos) return { ...u, position: pos };
+            if (u.position === pos) return { ...u, position: fromPos };
+            return u;
+          }),
+        });
+      } else {
+        onUpdate(step.id, {
+          units: step.units.map((u) =>
+            u.position === fromPos ? { ...u, position: pos } : u
+          ),
+        });
+      }
+      setSelectedPos(null);
+      return;
+    }
+
+    // Placing a new champion from the picker panel
+    const existingAtPos = step.units.find((u) => u.position === pos);
+    if (existingAtPos) return; // occupied — don't overwrite
+    const alreadyOnBoard = step.units.find((u) => u.championKey === apiName);
+    if (alreadyOnBoard) {
+      const champion = championMap.get(apiName);
+      toast.error(`${champion?.name ?? apiName} is already on the board`);
+      return;
+    }
+    const newUnit: BoardUnit = {
+      id: crypto.randomUUID(),
+      championKey: apiName,
+      position: pos,
+      items: [],
+      starLevel: 1,
+      isCarry: false,
+      isItemHolder: false,
+    };
+    onUpdate(step.id, { units: [...step.units, newUnit] });
+    setPendingChampion(null);
+  }
+
   function handleCopyPlannerCode() {
     const result = generatePlannerCode(step.units, setNumber);
     if (!result.ok) {
@@ -532,6 +587,7 @@ export function BoardStepCard({
               onHexClick={handleHexClick}
               onRemove={handleRemoveUnit}
               onCancel={handleCancel}
+              onDrop={handleDrop}
             />
           </div>
 
