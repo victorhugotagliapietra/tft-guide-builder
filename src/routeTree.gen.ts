@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedGuidesNewRouteImport } from './routes/_authenticated/guides.new'
+import { Route as AuthenticatedGuidesIdEditRouteImport } from './routes/_authenticated/guides.$id.edit'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -45,6 +46,12 @@ const AuthenticatedGuidesNewRoute = AuthenticatedGuidesNewRouteImport.update({
   path: '/guides/new',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedGuidesIdEditRoute =
+  AuthenticatedGuidesIdEditRouteImport.update({
+    id: '/guides/$id/edit',
+    path: '/guides/$id/edit',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -52,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/guides/new': typeof AuthenticatedGuidesNewRoute
+  '/guides/$id/edit': typeof AuthenticatedGuidesIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +67,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/guides/new': typeof AuthenticatedGuidesNewRoute
+  '/guides/$id/edit': typeof AuthenticatedGuidesIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +77,25 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/guides/new': typeof AuthenticatedGuidesNewRoute
+  '/_authenticated/guides/$id/edit': typeof AuthenticatedGuidesIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/dashboard' | '/guides/new'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/dashboard'
+    | '/guides/new'
+    | '/guides/$id/edit'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/signup' | '/dashboard' | '/guides/new'
+  to:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/dashboard'
+    | '/guides/new'
+    | '/guides/$id/edit'
   id:
     | '__root__'
     | '/'
@@ -82,6 +104,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/dashboard'
     | '/_authenticated/guides/new'
+    | '/_authenticated/guides/$id/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -135,17 +158,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGuidesNewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/guides/$id/edit': {
+      id: '/_authenticated/guides/$id/edit'
+      path: '/guides/$id/edit'
+      fullPath: '/guides/$id/edit'
+      preLoaderRoute: typeof AuthenticatedGuidesIdEditRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGuidesNewRoute: typeof AuthenticatedGuidesNewRoute
+  AuthenticatedGuidesIdEditRoute: typeof AuthenticatedGuidesIdEditRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGuidesNewRoute: AuthenticatedGuidesNewRoute,
+  AuthenticatedGuidesIdEditRoute: AuthenticatedGuidesIdEditRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
