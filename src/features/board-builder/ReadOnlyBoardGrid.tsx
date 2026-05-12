@@ -25,20 +25,28 @@ function ChampionDisplay({
   champion: TFTChampion;
   unit: BoardUnit;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
+  const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
+    champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
+  );
   if (!champion) return null;
 
   const unitItems = unit.items ?? [];
 
   return (
     <>
-      {champion.iconUrl && !imgFailed ? (
+      {imgState !== "failed" ? (
         <img
-          src={champion.iconUrl}
+          src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
           alt={champion.name}
           className="w-9 h-9 object-cover"
           loading="lazy"
-          onError={() => setImgFailed(true)}
+          onError={() => {
+            if (imgState === "primary" && champion.fallbackIconUrl) {
+              setImgState("fallback");
+            } else {
+              setImgState("failed");
+            }
+          }}
         />
       ) : (
         <span className="text-[8px] leading-tight text-center px-0.5 truncate w-full">

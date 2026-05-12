@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
 import { COST_COLORS } from "@/features/tft-data/mock-champions";
@@ -14,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 const HEX_W = 64;
 const HEX_H = 74;
-const ROW_PITCH = Math.round(HEX_H * 0.75); // 56px — rows overlap by 25%
+const ROW_PITCH = Math.round(HEX_H * 0.75); // 56px
 const GAP = 3;
 const CELL_W = HEX_W - GAP;
 const CELL_H = HEX_H - GAP;
@@ -24,35 +25,144 @@ export const HEX_CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2; // 480
 export const HEX_CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H; // 242
 
 // ---------------------------------------------------------------------------
-// Sub-component: single champion display (owns img-failed state)
+// Champion image with 2-step fallback
 // ---------------------------------------------------------------------------
 
-function ChampionDisplay({
+function ChampionImg({
   champion,
-  starLevel,
+  className,
 }: {
   champion: TFTChampion;
-  starLevel: number;
+  className?: string;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
+  const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
+    champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
+  );
+
+  if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
+    return (
+      <span className={cn("text-[8px] leading-tight text-center px-0.5 break-words", className)}>
+        {champion.name.slice(0, 7)}
+      </span>
+    );
+  }
+
+  const src = imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl;
 
   return (
-    <>
-      {champion.iconUrl && !imgFailed ? (
-        <img
-          src={champion.iconUrl}
-          alt={champion.name}
-          className="w-9 h-9 object-cover"
-          loading="lazy"
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <span className="text-[8px] leading-tight text-center px-0.5 truncate w-full">
-          {champion.name.slice(0, 7)}
-        </span>
+    <img
+      src={src}
+      alt={champion.name}
+      className={className}
+      loading="lazy"
+      draggable={false}
+      onError={() => {
+        if (imgState === "primary" && champion.fallbackIconUrl) {
+          setImgState("fallback");
+        } else {
+          setImgState("failed");
+        }
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Draggable unit (inside a hex that has a champion)
+// dnd-kit id: "hex:<position>"
+// ---------------------------------------------------------------------------
+
+function DraggableUnit({
+  pos,
+  champion,
+  starLevel,
+  isSelected,
+}: {
+  pos: number;
+  champion: TFTChampion;
+  starLevel: number;
+  isSelected: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `hex:${pos}`,
+  });
+  const colors = COST_COLORS[champion.cost] ?? COST_COLORS[1];
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ touchAction: "none" }}
+      className={cn(
+        "w-full h-full flex flex-col items-center justify-center cursor-grab active:cursor-grabbing select-none",
+        colors.bg,
+        colors.text,
+        isDragging && "opacity-30",
+        isSelected && "brightness-125"
       )}
-      <span className="text-[8px] opacity-60 leading-none mt-0.5">{starLevel}★</span>
-    </>
+    >
+      <ChampionImg
+        champion={champion}
+        className="w-9 h-9 object-cover pointer-events-none"
+      />
+      <span className="text-[8px] opacity-60 leading-none mt-0.5 pointer-events-none">
+        {starLevel}★
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Droppable hex cell
+// dnd-kit id: "hex:<position>"
+// ---------------------------------------------------------------------------
+
+function DroppableHex({
+  pos,
+  left,
+  top,
+  isEmpty,
+  isPlaceTarget,
+  children,
+}: {
+  pos: number;
+  left: number;
+  top: number;
+  isEmpty: boolean;
+  isPlaceTarget: boolean;
+  children?: React.ReactNode;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `hex:${pos}` });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        position: "absolute",
+        left,
+        top,
+        width: CELL_W,
+        height: CELL_H,
+        clipPath: CLIP,
+      }}
+      className={cn(
+        "flex flex-col items-center justify-center transition-all",
+        isEmpty && "bg-muted/20",
+        isPlaceTarget && isEmpty && "bg-primary/20",
+        isOver && isEmpty && "bg-primary/40 brightness-125",
+        isOver && !isEmpty && "brightness-150"
+      )}
+      title={isEmpty ? `Hex ${pos}` : undefined}
+    >
+      {children}
+      {isEmpty && isOver && (
+        <span className="text-primary/70 text-xl leading-none pointer-events-none">+</span>
+      )}
+      {isEmpty && !isOver && isPlaceTarget && (
+        <span className="text-primary/40 text-xl leading-none pointer-events-none">+</span>
+      )}
+    </div>
   );
 }
 
@@ -62,15 +172,12 @@ function ChampionDisplay({
 
 type Props = {
   units: BoardUnit[];
-  selectedPos: number | null;          // hex selected for click-to-move
-  pendingChampion: TFTChampion | null; // champion waiting to be click-placed
+  selectedPos: number | null;
   onHexClick: (pos: number) => void;
   onRemove: (pos: number) => void;
-  onCancel: () => void;
-  /** Called when a champion is dropped onto a hex via drag-and-drop.
-   *  fromPos is set when the source is an existing board unit (move/swap),
-   *  undefined when the source is the champion panel (place). */
-  onDrop: (pos: number, apiName: string, fromPos: number | undefined) => void;
+  onCancelSelection: () => void;
+  /** True while any champion tile in the picker is being dragged */
+  isDraggingFromPanel: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -80,11 +187,10 @@ type Props = {
 export function BoardGrid({
   units,
   selectedPos,
-  pendingChampion,
   onHexClick,
   onRemove,
-  onCancel,
-  onDrop,
+  onCancelSelection,
+  isDraggingFromPanel,
 }: Props) {
   const { championMap } = useTFTData();
   const unitMap = new Map(units.map((u) => [u.position, u]));
@@ -94,11 +200,8 @@ export function BoardGrid({
     ? championMap.get(selectedUnit.championKey)
     : undefined;
 
-  const [dragOverPos, setDragOverPos] = useState<number | null>(null);
-
   return (
     <div className="space-y-2">
-      {/* Hex grid */}
       <div
         className="relative"
         style={{ width: HEX_CONTAINER_W, height: HEX_CONTAINER_H }}
@@ -108,125 +211,67 @@ export function BoardGrid({
             const pos = coordsToPosition(row, col);
             const unit = unitMap.get(pos);
             const champion = unit ? championMap.get(unit.championKey) : undefined;
-            const colors = champion
-              ? (COST_COLORS[champion.cost] ?? COST_COLORS[1])
-              : null;
-
-            const isSelected = selectedPos === pos;
-            const isMovingTarget = selectedPos !== null && !unit && !pendingChampion;
-            const isPlaceTarget = pendingChampion !== null && !unit;
-            const isDragOver = dragOverPos === pos;
 
             const left = col * HEX_W + (row % 2 === 1 ? HEX_W / 2 : 0) + GAP / 2;
             const top = row * ROW_PITCH + GAP / 2;
+            const isEmpty = !unit;
 
             return (
-              <button
+              <DroppableHex
                 key={pos}
-                type="button"
-                draggable={!!unit}
-                onClick={() => onHexClick(pos)}
-                onDragStart={
-                  unit
-                    ? (e) => {
-                        e.dataTransfer.setData(
-                          "text/plain",
-                          JSON.stringify({ apiName: unit.championKey, fromPos: pos })
-                        );
-                        e.dataTransfer.effectAllowed = "move";
-                      }
-                    : undefined
-                }
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  setDragOverPos(pos);
-                }}
-                onDragLeave={() => setDragOverPos(null)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOverPos(null);
-                  try {
-                    const payload = JSON.parse(e.dataTransfer.getData("text/plain"));
-                    onDrop(pos, payload.apiName, payload.fromPos);
-                  } catch {
-                    // malformed payload — ignore
-                  }
-                }}
-                style={{
-                  position: "absolute",
-                  left,
-                  top,
-                  width: CELL_W,
-                  height: CELL_H,
-                  clipPath: CLIP,
-                }}
-                className={cn(
-                  "flex flex-col items-center justify-center transition-all select-none",
-                  champion
-                    ? [colors?.bg, colors?.text]
-                    : "bg-muted/20 hover:bg-muted/40",
-                  isSelected && "brightness-125 ring-2 ring-white/60",
-                  isPlaceTarget && "bg-primary/20 hover:bg-primary/35 cursor-crosshair",
-                  isMovingTarget && "hover:bg-primary/20 cursor-crosshair",
-                  isDragOver && "brightness-150 ring-2 ring-primary/70"
-                )}
-                title={
-                  champion
-                    ? `${champion.name} ${champion.cost}★`
-                    : `Hex ${pos}`
-                }
+                pos={pos}
+                left={left}
+                top={top}
+                isEmpty={isEmpty}
+                isPlaceTarget={isDraggingFromPanel}
               >
-                {champion ? (
-                  <ChampionDisplay
-                    champion={champion}
-                    starLevel={unit!.starLevel}
-                  />
-                ) : isPlaceTarget || isDragOver ? (
-                  <span className="text-primary/50 text-lg leading-none">+</span>
+                {champion && unit ? (
+                  // Clicking an occupied hex selects it (for removal via status bar)
+                  <div
+                    className="w-full h-full"
+                    onClick={() => onHexClick(pos)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && onHexClick(pos)}
+                    aria-label={`${champion.name} — click to select`}
+                  >
+                    <DraggableUnit
+                      pos={pos}
+                      champion={champion}
+                      starLevel={unit.starLevel}
+                      isSelected={selectedPos === pos}
+                    />
+                  </div>
                 ) : null}
-              </button>
+              </DroppableHex>
             );
           })
         )}
       </div>
 
-      {/* Status bar */}
-      {(selectedUnit || pendingChampion) && (
+      {/* Status bar when a unit is selected */}
+      {selectedUnit && selectedChampion && (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-sm">
-          {selectedUnit && selectedChampion ? (
-            <span className="flex-1 text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {selectedChampion.name}
-              </span>{" "}
-              selected — click an empty hex to move
-            </span>
-          ) : pendingChampion ? (
-            <span className="flex-1 text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {pendingChampion.name}
-              </span>{" "}
-              — click an empty hex to place
-            </span>
-          ) : null}
-          {selectedUnit && (
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              className="h-6 px-2 text-xs"
-              onClick={() => onRemove(selectedPos!)}
-            >
-              <X className="h-3 w-3 mr-1" />
-              Remove
-            </Button>
-          )}
+          <span className="flex-1 text-muted-foreground">
+            <span className="font-medium text-foreground">{selectedChampion.name}</span>{" "}
+            selected
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            className="h-6 px-2 text-xs"
+            onClick={() => onRemove(selectedPos!)}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Remove
+          </Button>
           <Button
             type="button"
             size="sm"
             variant="ghost"
             className="h-6 px-2 text-xs"
-            onClick={onCancel}
+            onClick={onCancelSelection}
           >
             Cancel
           </Button>

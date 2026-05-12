@@ -1,5 +1,16 @@
 import { useState, useMemo } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
   ChevronDown,
   ChevronRight,
   Copy,
@@ -47,83 +58,130 @@ import {
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Champion tile (owns img-failed state)
+// Champion image with 2-step fallback (shared between tile + drag overlay)
 // ---------------------------------------------------------------------------
 
-function ChampionTile({
+function ChampionImg({
   champion,
-  isOccupied,
-  isPending,
-  onSelect,
+  className,
 }: {
   champion: TFTChampion;
-  isOccupied: boolean;
-  isPending: boolean;
-  onSelect: (c: TFTChampion) => void;
+  className?: string;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const colors = COST_COLORS[champion.cost] ?? COST_COLORS[1];
+  const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
+    champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
+  );
+
+  if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center text-[8px] text-center leading-tight px-0.5",
+          className
+        )}
+      >
+        {champion.name.slice(0, 8)}
+      </div>
+    );
+  }
 
   return (
-    <button
-      type="button"
-      draggable
-      onClick={() => onSelect(champion)}
-      onDragStart={(e) => {
-        e.dataTransfer.setData(
-          "text/plain",
-          JSON.stringify({ apiName: champion.apiName })
-        );
-        e.dataTransfer.effectAllowed = "copy";
+    <img
+      src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
+      alt={champion.name}
+      className={className}
+      loading="lazy"
+      draggable={false}
+      onError={() => {
+        if (imgState === "primary" && champion.fallbackIconUrl) {
+          setImgState("fallback");
+        } else {
+          setImgState("failed");
+        }
       }}
-      title={champion.name}
-      className={cn(
-        "flex flex-col items-center gap-0.5 rounded-md p-1 text-[10px] font-medium transition-all w-14 cursor-grab active:cursor-grabbing",
-        colors.bg,
-        colors.text,
-        isOccupied && "opacity-30",
-        isPending && "ring-2 ring-white scale-105 brightness-110"
-      )}
-    >
-      {champion.iconUrl && !imgFailed ? (
-        <img
-          src={champion.iconUrl}
-          alt={champion.name}
-          className="w-10 h-10 rounded object-cover pointer-events-none"
-          loading="lazy"
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <div
-          className={cn(
-            "w-10 h-10 rounded flex items-center justify-center text-[8px] text-center leading-tight px-0.5",
-            colors.bg
-          )}
-        >
-          {champion.name.slice(0, 8)}
-        </div>
-      )}
-      <span className="truncate w-full text-center leading-tight">
-        {champion.name.slice(0, 9)}
-      </span>
-    </button>
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Inline champion panel
+// Draggable champion tile in the picker panel
+// dnd-kit id: "champion:<apiName>"
+// ---------------------------------------------------------------------------
+
+function DraggableChampionTile({
+  champion,
+  isOccupied,
+}: {
+  champion: TFTChampion;
+  isOccupied: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `champion:${champion.apiName}`,
+    disabled: isOccupied,
+  });
+  const colors = COST_COLORS[champion.cost] ?? COST_COLORS[1];
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ touchAction: "none" }}
+      title={champion.name}
+      className={cn(
+        "flex flex-col items-center gap-0.5 rounded-md p-1 text-[10px] font-medium transition-all w-14 cursor-grab active:cursor-grabbing select-none",
+        colors.bg,
+        colors.text,
+        isOccupied && "opacity-30 cursor-not-allowed",
+        isDragging && "opacity-40"
+      )}
+    >
+      <ChampionImg
+        champion={champion}
+        className="w-10 h-10 rounded object-cover pointer-events-none"
+      />
+      <span className="truncate w-full text-center leading-tight pointer-events-none">
+        {champion.name.slice(0, 9)}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Drag overlay preview (follows the cursor while dragging)
+// ---------------------------------------------------------------------------
+
+function DragOverlayContent({ champion }: { champion: TFTChampion }) {
+  const colors = COST_COLORS[champion.cost] ?? COST_COLORS[1];
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center gap-0.5 rounded-md p-1 text-[10px] font-medium w-14 shadow-xl rotate-3 opacity-90 select-none pointer-events-none",
+        colors.bg,
+        colors.text
+      )}
+    >
+      <ChampionImg
+        champion={champion}
+        className="w-10 h-10 rounded object-cover"
+      />
+      <span className="truncate w-full text-center leading-tight">
+        {champion.name.slice(0, 9)}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Champion picker panel
 // ---------------------------------------------------------------------------
 
 const COST_OPTIONS = [0, 1, 2, 3, 4, 5] as const;
 
 function ChampionPanel({
   occupiedKeys,
-  pendingKey,
-  onSelect,
 }: {
   occupiedKeys: string[];
-  pendingKey: string | null;
-  onSelect: (c: TFTChampion) => void;
 }) {
   const [search, setSearch] = useState("");
   const [costFilter, setCostFilter] = useState<number | null>(null);
@@ -134,8 +192,7 @@ function ChampionPanel({
       champions.filter((c) => {
         const matchesCost = costFilter === null || c.cost === costFilter;
         const matchesSearch =
-          !search ||
-          c.name.toLowerCase().includes(search.trim().toLowerCase());
+          !search || c.name.toLowerCase().includes(search.trim().toLowerCase());
         return matchesCost && matchesSearch;
       }),
     [champions, search, costFilter]
@@ -143,11 +200,8 @@ function ChampionPanel({
 
   return (
     <div className="space-y-2">
-      {/* Controls row */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-medium text-muted-foreground shrink-0">
-          Units
-        </span>
+        <span className="text-xs font-medium text-muted-foreground shrink-0">Units</span>
         <div className="flex gap-1 flex-wrap">
           <button
             type="button"
@@ -167,9 +221,7 @@ function ChampionPanel({
               <button
                 key={cost}
                 type="button"
-                onClick={() =>
-                  setCostFilter(costFilter === cost ? null : cost)
-                }
+                onClick={() => setCostFilter(costFilter === cost ? null : cost)}
                 className={cn(
                   "h-6 px-2 rounded text-[10px] font-bold border-transparent transition-opacity",
                   colors.bg,
@@ -193,18 +245,12 @@ function ChampionPanel({
         </div>
       </div>
 
-      {/* Champion grid */}
       <div className="flex flex-wrap gap-1.5 max-h-52 overflow-y-auto pr-1">
         {filtered.map((champion) => (
-          <ChampionTile
+          <DraggableChampionTile
             key={champion.apiName}
             champion={champion}
-            isOccupied={
-              occupiedKeys.includes(champion.apiName) &&
-              pendingKey !== champion.apiName
-            }
-            isPending={pendingKey === champion.apiName}
-            onSelect={onSelect}
+            isOccupied={occupiedKeys.includes(champion.apiName)}
           />
         ))}
         {filtered.length === 0 && (
@@ -218,7 +264,7 @@ function ChampionPanel({
 }
 
 // ---------------------------------------------------------------------------
-// BoardStepCard props
+// Props
 // ---------------------------------------------------------------------------
 
 type Props = {
@@ -254,72 +300,107 @@ export function BoardStepCard({
   const [description, setDescription] = useState(step.description);
   const { championMap, setNumber } = useTFTData();
 
-  // Board interaction state
+  // Which hex is selected (for removal via status bar)
   const [selectedPos, setSelectedPos] = useState<number | null>(null);
-  const [pendingChampion, setPendingChampion] = useState<TFTChampion | null>(null);
+  // Which champion id is currently being dragged (for DragOverlay)
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  // PointerSensor with a small activation distance to distinguish clicks from drags
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  );
 
   // -------------------------------------------------------------------------
-  // Board interaction handlers
+  // Drag handlers
   // -------------------------------------------------------------------------
 
-  function handleHexClick(pos: number) {
-    const unit = step.units.find((u) => u.position === pos);
-
-    // Placing mode
-    if (pendingChampion) {
-      if (!unit) {
-        const alreadyOnBoard = step.units.find(
-          (u) => u.championKey === pendingChampion.apiName
-        );
-        if (alreadyOnBoard) {
-          toast.error(`${pendingChampion.name} is already on the board`);
-          return;
-        }
-        const newUnit: BoardUnit = {
-          id: crypto.randomUUID(),
-          championKey: pendingChampion.apiName,
-          position: pos,
-          items: [],
-          starLevel: 1,
-          isCarry: false,
-          isItemHolder: false,
-        };
-        onUpdate(step.id, { units: [...step.units, newUnit] });
-        setPendingChampion(null);
-      }
-      return;
-    }
-
-    // Moving mode
-    if (selectedPos !== null) {
-      if (pos === selectedPos) {
-        setSelectedPos(null);
-        return;
-      }
-      if (unit) {
-        setSelectedPos(pos);
-        return;
-      }
-      onUpdate(step.id, {
-        units: step.units.map((u) =>
-          u.position === selectedPos ? { ...u, position: pos } : u
-        ),
-      });
-      setSelectedPos(null);
-      return;
-    }
-
-    // Idle mode
-    if (unit) setSelectedPos(pos);
+  function handleDragStart({ active }: DragStartEvent) {
+    setActiveDragId(String(active.id));
+    setSelectedPos(null); // clear selection when starting a drag
   }
 
-  function handleChampionSelect(champion: TFTChampion) {
-    if (pendingChampion?.apiName === champion.apiName) {
-      setPendingChampion(null);
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    setActiveDragId(null);
+
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    // Only accept drops onto hex cells
+    if (!overId.startsWith("hex:")) return;
+    const targetPos = parseInt(overId.replace("hex:", ""), 10);
+
+    if (activeId.startsWith("champion:")) {
+      // --- Placing from the picker panel ---
+      const apiName = activeId.replace("champion:", "");
+      placeChampion(apiName, targetPos);
+    } else if (activeId.startsWith("hex:")) {
+      // --- Moving / swapping on the board ---
+      const fromPos = parseInt(activeId.replace("hex:", ""), 10);
+      if (fromPos === targetPos) return;
+      moveOrSwap(fromPos, targetPos);
+    }
+  }
+
+  function handleDragCancel() {
+    setActiveDragId(null);
+  }
+
+  // -------------------------------------------------------------------------
+  // Board mutation helpers
+  // -------------------------------------------------------------------------
+
+  function placeChampion(apiName: string, targetPos: number) {
+    const occupiedAtTarget = step.units.find((u) => u.position === targetPos);
+    if (occupiedAtTarget) return; // hex already has a unit
+
+    const alreadyOnBoard = step.units.find((u) => u.championKey === apiName);
+    if (alreadyOnBoard) {
+      const champ = championMap.get(apiName);
+      toast.error(`${champ?.name ?? apiName} is already on the board`);
       return;
     }
-    setPendingChampion(champion);
+
+    const newUnit: BoardUnit = {
+      id: crypto.randomUUID(),
+      championKey: apiName,
+      position: targetPos,
+      items: [],
+      starLevel: 1,
+      isCarry: false,
+      isItemHolder: false,
+    };
+    onUpdate(step.id, { units: [...step.units, newUnit] });
+  }
+
+  function moveOrSwap(fromPos: number, targetPos: number) {
+    const targetUnit = step.units.find((u) => u.position === targetPos);
+
+    if (targetUnit) {
+      // Swap the two positions
+      onUpdate(step.id, {
+        units: step.units.map((u) => {
+          if (u.position === fromPos) return { ...u, position: targetPos };
+          if (u.position === targetPos) return { ...u, position: fromPos };
+          return u;
+        }),
+      });
+    } else {
+      // Move to empty hex
+      onUpdate(step.id, {
+        units: step.units.map((u) =>
+          u.position === fromPos ? { ...u, position: targetPos } : u
+        ),
+      });
+    }
     setSelectedPos(null);
+  }
+
+  function handleHexClick(pos: number) {
+    setSelectedPos((prev) => (prev === pos ? null : pos));
   }
 
   function handleRemoveUnit(pos: number) {
@@ -327,58 +408,6 @@ export function BoardStepCard({
       units: step.units.filter((u) => u.position !== pos),
     });
     setSelectedPos(null);
-  }
-
-  function handleCancel() {
-    setSelectedPos(null);
-    setPendingChampion(null);
-  }
-
-  function handleDrop(pos: number, apiName: string, fromPos: number | undefined) {
-    if (fromPos !== undefined) {
-      // Moving or swapping an existing board unit
-      if (pos === fromPos) return;
-      const targetUnit = step.units.find((u) => u.position === pos);
-      if (targetUnit) {
-        // Swap the two positions
-        onUpdate(step.id, {
-          units: step.units.map((u) => {
-            if (u.position === fromPos) return { ...u, position: pos };
-            if (u.position === pos) return { ...u, position: fromPos };
-            return u;
-          }),
-        });
-      } else {
-        onUpdate(step.id, {
-          units: step.units.map((u) =>
-            u.position === fromPos ? { ...u, position: pos } : u
-          ),
-        });
-      }
-      setSelectedPos(null);
-      return;
-    }
-
-    // Placing a new champion from the picker panel
-    const existingAtPos = step.units.find((u) => u.position === pos);
-    if (existingAtPos) return; // occupied — don't overwrite
-    const alreadyOnBoard = step.units.find((u) => u.championKey === apiName);
-    if (alreadyOnBoard) {
-      const champion = championMap.get(apiName);
-      toast.error(`${champion?.name ?? apiName} is already on the board`);
-      return;
-    }
-    const newUnit: BoardUnit = {
-      id: crypto.randomUUID(),
-      championKey: apiName,
-      position: pos,
-      items: [],
-      starLevel: 1,
-      isCarry: false,
-      isItemHolder: false,
-    };
-    onUpdate(step.id, { units: [...step.units, newUnit] });
-    setPendingChampion(null);
   }
 
   function handleCopyPlannerCode() {
@@ -392,6 +421,25 @@ export function BoardStepCard({
       () => toast.error("Failed to write to clipboard.")
     );
   }
+
+  // -------------------------------------------------------------------------
+  // Derive overlay champion from activeDragId
+  // -------------------------------------------------------------------------
+
+  const overlayChampion: TFTChampion | null = useMemo(() => {
+    if (!activeDragId) return null;
+    if (activeDragId.startsWith("champion:")) {
+      return championMap.get(activeDragId.replace("champion:", "")) ?? null;
+    }
+    if (activeDragId.startsWith("hex:")) {
+      const pos = parseInt(activeDragId.replace("hex:", ""), 10);
+      const unit = step.units.find((u) => u.position === pos);
+      return unit ? (championMap.get(unit.championKey) ?? null) : null;
+    }
+    return null;
+  }, [activeDragId, championMap, step.units]);
+
+  const isDraggingFromPanel = !!(activeDragId?.startsWith("champion:"));
 
   // -------------------------------------------------------------------------
   // Collapsed header summary
@@ -427,66 +475,32 @@ export function BoardStepCard({
             <Badge variant="outline" className="text-xs shrink-0">
               {STEP_TYPE_LABELS[step.stepType]}
             </Badge>
-            <span className="text-xs text-muted-foreground shrink-0">
-              Lv{step.level}
-            </span>
+            <span className="text-xs text-muted-foreground shrink-0">Lv{step.level}</span>
           </div>
           {!isExpanded && unitCount > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5 truncate">
               {unitCount} unit{unitCount !== 1 ? "s" : ""}
-              {championNames
-                ? ` — ${championNames}${unitCount > 3 ? "…" : ""}`
-                : ""}
+              {championNames ? ` — ${championNames}${unitCount > 3 ? "…" : ""}` : ""}
             </p>
           )}
         </div>
 
-        {/* Action buttons */}
         <div
           className="flex items-center gap-1 shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            disabled={isFirst}
-            onClick={() => onMoveUp(step.id)}
-            title="Move up"
-          >
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isFirst} onClick={() => onMoveUp(step.id)} title="Move up">
             <ArrowUp className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            disabled={isLast}
-            onClick={() => onMoveDown(step.id)}
-            title="Move down"
-          >
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isLast} onClick={() => onMoveDown(step.id)} title="Move down">
             <ArrowDown className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            onClick={() => onDuplicate(step.id)}
-            title="Duplicate"
-          >
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onDuplicate(step.id)} title="Duplicate">
             <Copy className="h-3.5 w-3.5" />
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                title="Delete"
-              >
+              <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Delete">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </AlertDialogTrigger>
@@ -499,9 +513,7 @@ export function BoardStepCard({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onRemove(step.id)}>
-                  Delete
-                </AlertDialogAction>
+                <AlertDialogAction onClick={() => onRemove(step.id)}>Delete</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -511,16 +523,14 @@ export function BoardStepCard({
       {/* Expanded editor */}
       {isExpanded && (
         <div className="p-4 space-y-4 bg-card">
-          {/* Metadata row */}
+          {/* Metadata */}
           <div className="grid sm:grid-cols-3 gap-3">
             <div className="sm:col-span-1 space-y-1.5">
               <Label className="text-xs">Title</Label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                onBlur={() =>
-                  onUpdate(step.id, { title: title.trim() || "New board" })
-                }
+                onBlur={() => onUpdate(step.id, { title: title.trim() || "New board" })}
                 placeholder="e.g. Level 6 stabilize"
                 className="h-8 text-sm"
               />
@@ -534,9 +544,7 @@ export function BoardStepCard({
                 value={step.level}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 1 && val <= 11) {
-                    onUpdate(step.id, { level: val });
-                  }
+                  if (!isNaN(val) && val >= 1 && val <= 11) onUpdate(step.id, { level: val });
                 }}
                 className="h-8 text-sm"
               />
@@ -545,20 +553,14 @@ export function BoardStepCard({
               <Label className="text-xs">Type</Label>
               <Select
                 value={step.stepType}
-                onValueChange={(val) =>
-                  onUpdate(step.id, {
-                    stepType: val as BoardStep["stepType"],
-                  })
-                }
+                onValueChange={(val) => onUpdate(step.id, { stepType: val as BoardStep["stepType"] })}
               >
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {STEP_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {STEP_TYPE_LABELS[t]}
-                    </SelectItem>
+                    <SelectItem key={t} value={t}>{STEP_TYPE_LABELS[t]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -577,28 +579,41 @@ export function BoardStepCard({
             />
           </div>
 
-          {/* Board grid */}
-          <div className="space-y-1.5 overflow-x-auto">
-            <Label className="text-xs">Board ({unitCount}/28 units)</Label>
-            <BoardGrid
-              units={step.units}
-              selectedPos={selectedPos}
-              pendingChampion={pendingChampion}
-              onHexClick={handleHexClick}
-              onRemove={handleRemoveUnit}
-              onCancel={handleCancel}
-              onDrop={handleDrop}
-            />
-          </div>
+          {/* DnD context wraps board + champion panel */}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            {/* Board grid */}
+            <div className="space-y-1.5 overflow-x-auto">
+              <Label className="text-xs">Board ({unitCount}/28 units)</Label>
+              <BoardGrid
+                units={step.units}
+                selectedPos={selectedPos}
+                onHexClick={handleHexClick}
+                onRemove={handleRemoveUnit}
+                onCancelSelection={() => setSelectedPos(null)}
+                isDraggingFromPanel={isDraggingFromPanel}
+              />
+            </div>
 
-          {/* Champion picker panel */}
-          <div className="border-t border-border/50 pt-3">
-            <ChampionPanel
-              occupiedKeys={step.units.map((u) => u.championKey)}
-              pendingKey={pendingChampion?.apiName ?? null}
-              onSelect={handleChampionSelect}
-            />
-          </div>
+            {/* Champion picker panel */}
+            <div className="border-t border-border/50 pt-3">
+              <ChampionPanel
+                occupiedKeys={step.units.map((u) => u.championKey)}
+              />
+            </div>
+
+            {/* Drag overlay — floating preview that follows the cursor */}
+            <DragOverlay dropAnimation={null}>
+              {overlayChampion && (
+                <DragOverlayContent champion={overlayChampion} />
+              )}
+            </DragOverlay>
+          </DndContext>
 
           {/* Footer */}
           <div className="flex justify-end pt-1 border-t border-border/50">
@@ -609,11 +624,7 @@ export function BoardStepCard({
               className="h-7 gap-1.5 text-xs"
               disabled={unitCount === 0}
               onClick={handleCopyPlannerCode}
-              title={
-                unitCount === 0
-                  ? "Add champions to generate a planner code"
-                  : "Copy planner code to clipboard"
-              }
+              title={unitCount === 0 ? "Add champions to generate a planner code" : "Copy planner code to clipboard"}
             >
               <Link className="h-3.5 w-3.5" />
               Copy planner code

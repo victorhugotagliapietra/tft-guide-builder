@@ -13,7 +13,7 @@ const PLUGIN_BASE = `${CDRAGON_BASE}/plugins/rcp-be-lol-game-data/global/default
 const TFT_DATA_URL = `${CDRAGON_BASE}/cdragon/tft/en_us.json`;
 const TFT_TEAM_PLANNER_URL = `${PLUGIN_BASE}/v1/tftchampions-teamplanner.json`;
 
-const SET17_PREFIX = "TFT17_";
+const CURRENT_SET = 17;
 const OUT_DIR = join(import.meta.dirname, "..", "public", "tft-data");
 
 function assetUrl(path: string): string {
@@ -40,27 +40,22 @@ async function main() {
 
   const sets: any[] = tftRaw.setData ?? [];
 
-  // Collect all champions across sets, deduplicate by apiName
-  const seen = new Set<string>();
-  const allChampions: any[] = [];
-  for (const set of sets) {
-    for (const c of set.champions ?? []) {
-      if (!seen.has(c.apiName)) {
-        seen.add(c.apiName);
-        allChampions.push(c);
-      }
-    }
+  // Find Set 17 explicitly
+  const set17 = sets.find((s: any) => s.number === CURRENT_SET);
+  if (!set17) {
+    const available = sets.map((s: any) => s.number).join(", ");
+    throw new Error(`Set ${CURRENT_SET} not found. Available: ${available}`);
   }
+  console.log(`Found Set ${CURRENT_SET}: "${set17.name}"`);
 
   let skipped = 0;
-  const champions = allChampions
-    .filter((c) => {
-      if (!c.apiName.startsWith(SET17_PREFIX)) { skipped++; return false; }
-      if (c.cost < 1 || c.cost > 5 || !c.name) { skipped++; return false; }
+  const champions = (set17.champions ?? [])
+    .filter((c: any) => {
+      if (!c.apiName || !c.name || c.cost < 1 || c.cost > 5) { skipped++; return false; }
       return true;
     })
     .map((c) => {
-      const iconPath = c.squareIconPath || c.tileIconPath || "";
+      const iconPath = c.squareIcon || c.squareIconPath || c.icon || c.tileIcon || "";
       if (!iconPath) console.warn(`  Missing icon: ${c.apiName}`);
       return {
         apiName: c.apiName,
@@ -83,11 +78,6 @@ async function main() {
   if (missingPlannerId > 0) {
     console.warn(`  ${missingPlannerId} champions have no planner ID`);
   }
-
-  // Find Set 17 traits
-  const set17 = sets.find(
-    (s) => s.number === 17 || (s.champions ?? []).some((c: any) => c.apiName.startsWith(SET17_PREFIX))
-  );
 
   const traits = (set17?.traits ?? [])
     .filter((t: any) => t.icon && t.apiName && t.name)

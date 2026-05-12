@@ -1,8 +1,8 @@
 import type { TFTChampion, TFTItem, TFTTrait, TFTSetData } from "./types";
-import { championIconUrl, itemIconUrl, traitIconUrl } from "./cdn";
+import { championIconUrl, itemIconUrl, traitIconUrl, rerollCdnChampionUrl } from "./cdn";
 
 // ---------------------------------------------------------------------------
-// Raw CommunityDragon shapes (minimal — only the fields we use)
+// Raw CommunityDragon shapes
 // ---------------------------------------------------------------------------
 
 export type RawChampion = {
@@ -11,8 +11,11 @@ export type RawChampion = {
   name: string;
   cost: number;
   traits: string[];
-  squareIconPath: string;
-  tileIconPath?: string;
+  // CDragon uses "squareIcon" (not squareIconPath) in the tft/en_us.json setData
+  squareIcon?: string;
+  squareIconPath?: string; // legacy field name, kept for compatibility
+  icon?: string;
+  tileIcon?: string;
 };
 
 export type RawTrait = {
@@ -46,56 +49,40 @@ export type RawTFTData = {
   items?: RawItem[];
 };
 
-export type RawPlannerChampion = {
-  id: number;
-  apiName: string;
-  name: string;
-};
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-export type RawPlannerData = RawPlannerChampion[];
+const CURRENT_SET = 17;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SET17_PREFIX = "TFT17_";
-
-/** Decide whether an item should appear in the builder. */
 function isUsableItem(item: RawItem): boolean {
-  if (!item.icon || !item.apiName || !item.name.trim()) return false;
+  if (!item.icon || !item.apiName || !item.name?.trim()) return false;
   const api = item.apiName;
-  if (api.includes("_placeholder")) return false;
-  if (api.includes("Tutorial")) return false;
-  if (api.includes("Debug")) return false;
-  if (api.includes("Augment")) return false;
-  return true;
+  return (
+    !api.includes("_placeholder") &&
+    !api.includes("Tutorial") &&
+    !api.includes("Debug") &&
+    !api.includes("Augment")
+  );
 }
 
-/** Classify a raw item into component / emblem / combined. */
 function classifyItem(item: RawItem): { isComponent: boolean; isEmblem: boolean } {
   const isEmblem =
     item.isEmblem === true ||
     item.apiName.toLowerCase().includes("emblem") ||
     (item.associatedTraits?.length ?? 0) > 0;
-
   const isComponent = !isEmblem && (item.composition?.length ?? 0) === 0;
-
   return { isComponent, isEmblem };
 }
 
-// ---------------------------------------------------------------------------
-// Planner data enrichment
-// ---------------------------------------------------------------------------
-
-export function enrichWithPlannerData(
-  champions: TFTChampion[],
-  plannerData: RawPlannerData
-): TFTChampion[] {
-  const plannerMap = new Map(plannerData.map((p) => [p.apiName, p.id]));
-  return champions.map((c) => {
-    const plannerId = plannerMap.get(c.apiName);
-    return plannerId !== undefined ? { ...c, plannerId } : c;
-  });
+function getBestIconPath(c: RawChampion): string {
+  // CDragon tft/en_us.json uses "squareIcon" for the portrait-sized image.
+  // Fall back to "icon" (splash art) or "tileIcon" if unavailable.
+  return c.squareIcon || c.squareIconPath || c.icon || c.tileIcon || "";
 }
 
 // ---------------------------------------------------------------------------
@@ -105,38 +92,39 @@ export function enrichWithPlannerData(
 export function normalizeSetData(raw: RawTFTData): TFTSetData {
   const sets = raw.setData ?? [];
 
-  // Collect all champions across all sets, deduplicate by apiName
-  const seen = new Set<string>();
-  const allChampions: RawChampion[] = [];
-  for (const set of sets) {
-    for (const c of set.champions ?? []) {
-      if (!seen.has(c.apiName)) {
-        seen.add(c.apiName);
-        allChampions.push(c);
-      }
-    }
+  // Find Set 17 explicitly — do NOT scan global arrays or other sets
+  const set17 = sets.find((s) => s.number === CURRENT_SET);
+
+  if (!set17) {
+    const available = sets.map((s) => s.number).join(", ");
+    console.warn(
+      `[TFT] Set ${CURRENT_SET} not found in setData. Available sets: ${available}`
+    );
   }
 
-  let skippedCount = 0;
+  const rawChampions = set17?.champions ?? [];
+  let skipped = 0;
 
-  const champions: TFTChampion[] = allChampions
+  const champions: TFTChampion[] = rawChampions
     .filter((c) => {
-      if (!c.apiName.startsWith(SET17_PREFIX)) {
-        skippedCount++;
-        return false;
-      }
-      if (c.cost < 1 || c.cost > 5 || !c.name) {
-        skippedCount++;
+      // Keep cost 1-5 playable champions only.
+      // This naturally excludes Training Dummy (cost 0 or non-standard),
+      // Blue Golem, Rift Scuttler, and other non-playable entries.
+      if (!c.apiName || !c.name || c.cost < 1 || c.cost > 5) {
+        skipped++;
         return false;
       }
       return true;
     })
     .map((c) => {
-      const iconPath = c.squareIconPath || c.tileIconPath || "";
+      const iconPath = getBestIconPath(c);
       const iconUrl = championIconUrl(iconPath);
+      const fallbackIconUrl = rerollCdnChampionUrl(c.name);
+
       if (!iconPath) {
-        console.warn(`[TFT] Missing icon for ${c.apiName}`);
+        console.warn(`[TFT] No icon path for ${c.apiName} (${c.name})`);
       }
+
       return {
         apiName: c.apiName,
         characterName: c.characterName ?? c.apiName,
@@ -145,19 +133,12 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
         traits: c.traits ?? [],
         squareIconPath: iconPath,
         iconUrl,
+        fallbackIconUrl,
       };
     });
 
-  if (skippedCount > 0) {
-    console.info(`[TFT] Skipped ${skippedCount} champions (not TFT17_ or invalid)`);
-  }
-  console.info(`[TFT] Loaded ${champions.length} Set 17 champions`);
-
-  // Find the Set 17 set entry for traits and metadata
-  const set17 = sets.find(
-    (s) =>
-      s.number === 17 ||
-      (s.champions ?? []).some((c) => c.apiName.startsWith(SET17_PREFIX))
+  console.info(
+    `[TFT] Set ${CURRENT_SET}: ${champions.length} champions loaded, ${skipped} skipped`
   );
 
   const traits: TFTTrait[] = (set17?.traits ?? [])
@@ -185,8 +166,8 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     });
 
   return {
-    setNumber: set17?.number ?? 17,
-    setName: set17?.name ?? "Set 17",
+    setNumber: CURRENT_SET,
+    setName: set17?.name ?? `Set ${CURRENT_SET}`,
     champions,
     traits,
     items,
