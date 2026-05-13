@@ -1,5 +1,15 @@
-import type { TFTChampion, TFTItem, TFTItemCategory, TFTTrait, TFTSetData, TraitBreakpoint, ItemRole } from "./types";
-import { championIconUrl, itemIconUrl, traitIconUrl, rerollCdnChampionUrl } from "./cdn";
+import type {
+  TFTChampion,
+  TFTItem,
+  TFTItemCategory,
+  TFTTrait,
+  TFTSetData,
+  TraitBreakpoint,
+  ItemRole,
+  TFTAugment,
+  TFTAugmentTier,
+} from "./types";
+import { championIconUrl, itemIconUrl, traitIconUrl, rerollCdnChampionUrl, assetUrl } from "./cdn";
 
 // ---------------------------------------------------------------------------
 // Raw CommunityDragon shapes
@@ -51,6 +61,12 @@ export type RawItem = {
   isEmblem?: boolean;
   unique?: boolean;
   hidden?: boolean;
+  // Description (used by augments — CDragon-templated text with @placeholder@ tokens).
+  desc?: string;
+  // Alternate icon fields the augment fallback chain checks.
+  iconPath?: string;
+  AugmentSmall?: string;
+  AugmentTile?: string;
   // Some CDragon versions expose a tags array.
   tags?: string[];
 };
@@ -379,6 +395,186 @@ function getBestIconPath(c: RawChampion): string {
 }
 
 // ---------------------------------------------------------------------------
+// Augment normalization
+// ---------------------------------------------------------------------------
+//
+// Augments live in `raw.items` alongside regular items but follow a different
+// apiName scheme and have no `composition`/`isEmblem` flags. The Set 17 augment
+// pool is the union of:
+//
+//   - TFT_Augment_*       (universal pool reused across sets)
+//   - TFT17_Augment_*     (set-specific augments)
+//
+// We exclude old-set leftovers, modes (Double Up / Team Up), tutorial / debug /
+// PVE markers, set-locked Changeling/glamour items, and Set 17 "God Augments"
+// (champion-specific ascension rewards — not part of the standard 4-augment
+// slot pool). Tier is inferred from Roman-numeral markers in the icon path,
+// with several fallback patterns for inconsistent CDragon naming.
+
+const AUGMENT_UNIVERSAL_RE = /^TFT_Augment_/i;
+const AUGMENT_CURRENT_SET_RE = new RegExp(`^TFT${CURRENT_SET}_Augment_`, "i");
+
+// apiName patterns that mark an augment as out of scope for the standard pool.
+const AUGMENT_APINAME_BLOCKLIST: RegExp[] = [
+  /HeroAugment/i,            // Set 9 hero-augment remnants
+  /Hero_Augment/i,
+  /GodAugment/i,             // Set 17 God Augments (ascension rewards, not slot picks)
+  /_PAIRS$/i,                // Double Up pair suffix
+  /DoubleUpAugment/i,        // Double Up exclusive
+  /TeamupAugment/i,          // team-up encounter only
+  /MarketOffering/i,         // Set 17 market UI rolls
+  /Tutorial/i,               // tutorial augments
+  /TFTEvent/i,               // event-only augments
+  /_Debug/i,
+  /_Test/i,
+  /_Placeholder/i,
+  /_PVE/i,                   // PVE encounter exclusive
+  /_Encounter/i,             // encounter-only augments
+  /Changeling_Glamour/i,     // Set 15 changeling glamour leftovers
+  /_SmallQuest$/i,           // quest progression markers
+  /_MediumQuest$/i,
+  /_LargeQuest$/i,
+  /_SkipOption$/i,           // UI skip placeholders
+  /_DummyPower$/i,
+  /_PIckEms$/i,              // CDragon-side typo for an internal marker
+  /_Set\d+$/i,               // legacy "_Set7", "_Set12" suffixed reroll leftovers
+];
+
+const AUGMENT_ICON_BLOCKLIST: RegExp[] = [
+  /unusable/i,
+  /_placeholder/i,
+];
+
+function isAugmentInCurrentSet(apiName: string): boolean {
+  return AUGMENT_UNIVERSAL_RE.test(apiName) || AUGMENT_CURRENT_SET_RE.test(apiName);
+}
+
+/**
+ * Detect old-set markers in the icon path. The path occasionally embeds a
+ * ".TFT_Set{N}." suffix indicating which set the icon was authored for —
+ * anything other than the current set is treated as an old-set leftover.
+ */
+function hasOldSetAugmentIconMarker(iconPath: string): boolean {
+  const m = iconPath.match(/\.TFT_Set(\d+)[._]/i);
+  if (!m) return false;
+  return parseInt(m[1], 10) !== CURRENT_SET;
+}
+
+function isUsableAugment(raw: RawItem): boolean {
+  if (!raw.apiName || !raw.name?.trim()) return false;
+  if (raw.hidden) return false;
+  if (!isAugmentInCurrentSet(raw.apiName)) return false;
+  if (AUGMENT_APINAME_BLOCKLIST.some((re) => re.test(raw.apiName))) return false;
+
+  // The icon path is required for tier detection. We accept augments even
+  // when only fallback fields are populated, so resolve the icon first.
+  const iconCandidate = pickAugmentIconPath(raw);
+  if (!iconCandidate) return false;
+  if (AUGMENT_ICON_BLOCKLIST.some((re) => re.test(iconCandidate))) return false;
+  if (hasOldSetAugmentIconMarker(iconCandidate)) return false;
+
+  // Sanity-check the display name
+  const name = raw.name.trim();
+  if (name.length < 2 || name.length > 80) return false;
+  if (/^TFT[_\d]/i.test(name)) return false;
+  return true;
+}
+
+/**
+ * Resolve the best icon path from the augment's available fields.
+ *
+ * Priority:
+ *   1. iconPath  (newer CDragon shape, when present)
+ *   2. icon      (standard field used by most TFT items/augments)
+ *   3. AugmentSmall / AugmentTile (rare alternate fields the user spec mentions)
+ */
+function pickAugmentIconPath(raw: RawItem): string {
+  const candidates = [raw.iconPath, raw.icon, raw.AugmentSmall, raw.AugmentTile];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.toLowerCase().includes("assets/")) return c;
+  }
+  return "";
+}
+
+/**
+ * Map an icon path to one of the three augment tiers.
+ *
+ * Detection order (each stops as soon as it matches):
+ *   1. Explicit Roman-numeral suffix on the icon filename: `_I.`, `_II.`, `_III.`
+ *   2. Dash-separated Roman numerals: `-I.tex`, `-II.tex`, `-III.tex`
+ *   3. CDragon placeholder names: `Missing-T1`, `Missing-T2`, `Missing-T3`
+ *   4. Numeric tier markers: `Tier1`, `Tier2`, `Tier3`
+ *   5. Trailing digit before extension: `Foo2.tex` → gold, `Foo3.tex` → prismatic
+ *   6. apiName Plus/PlusPlus suffix conventions
+ *   7. Final fallback: silver (logged so we can audit unknowns)
+ */
+function detectAugmentTier(iconPath: string, apiName: string): TFTAugmentTier {
+  if (/_III[._]/.test(iconPath) || /-III\.tex$/i.test(iconPath) || /Missing-T3/i.test(iconPath) || /Tier3/i.test(iconPath)) {
+    return "prismatic";
+  }
+  if (/_II[._]/.test(iconPath) || /-II\.tex$/i.test(iconPath) || /Missing-T2/i.test(iconPath) || /Tier2/i.test(iconPath)) {
+    return "gold";
+  }
+  if (/_I[._]/.test(iconPath) || /-I\.tex$/i.test(iconPath) || /Missing-T1/i.test(iconPath) || /Tier1/i.test(iconPath)) {
+    return "silver";
+  }
+
+  // Trailing digit before .tex (e.g., SnipersNest2.tex)
+  const m = iconPath.match(/(\d)\.tex$/i);
+  if (m) {
+    if (m[1] === "3") return "prismatic";
+    if (m[1] === "2") return "gold";
+    if (m[1] === "1") return "silver";
+  }
+
+  // apiName fallback patterns
+  if (/(PlusPlus|Prismatic)$/i.test(apiName)) return "prismatic";
+  if (/Plus$/i.test(apiName)) return "gold";
+
+  console.warn(`[TFT] Augment tier unknown, defaulting to silver: ${apiName} (icon: ${iconPath})`);
+  return "silver";
+}
+
+function makeAugmentId(apiName: string): string {
+  // Stable URL-safe id derived from apiName: strip "TFT_" / "TFT17_" prefix,
+  // lowercase, and keep only alphanumerics + underscore.
+  return apiName
+    .replace(new RegExp(`^TFT(_|${CURRENT_SET}_)`, "i"), "")
+    .replace(/[^a-zA-Z0-9_]/g, "")
+    .toLowerCase();
+}
+
+function normalizeAugment(raw: RawItem): TFTAugment | null {
+  if (!isUsableAugment(raw)) return null;
+
+  const iconPath = pickAugmentIconPath(raw);
+  if (!iconPath) {
+    console.warn(`[TFT] Augment skipped — no valid icon: ${raw.apiName}`);
+    return null;
+  }
+
+  const iconUrl = assetUrl(iconPath);
+  if (!iconUrl) {
+    console.warn(`[TFT] Augment skipped — broken icon URL: ${raw.apiName}`);
+    return null;
+  }
+
+  const tier = detectAugmentTier(iconPath, raw.apiName);
+  const associatedTraits = (raw.associatedTraits ?? []).filter((t) => t && t.length > 0);
+  const cleanedDesc = (raw.desc ?? "").trim();
+
+  return {
+    id: makeAugmentId(raw.apiName),
+    apiName: raw.apiName,
+    name: raw.name.trim(),
+    ...(cleanedDesc.length > 0 ? { description: cleanedDesc } : {}),
+    icon: iconUrl,
+    tier,
+    ...(associatedTraits.length > 0 ? { traits: associatedTraits } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main normalizer
 // ---------------------------------------------------------------------------
 
@@ -534,11 +730,62 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     Object.entries(categoryCounts).map(([k, v]) => `${k}=${v}`).join(", ")
   );
 
+  // -------------------------------------------------------------------------
+  // Augments — separate pass over raw.items. Augments share the items array
+  // in CDragon but are filtered out from `items` above via the "augment" entry
+  // in ITEM_API_BLOCKLIST, so we re-scan rawItems here. Dedupe by apiName.
+  // -------------------------------------------------------------------------
+
+  const augmentMap = new Map<string, TFTAugment>();
+  let augmentCandidates = 0;
+  let augmentSkipped = 0;
+  let augmentMissingIcon = 0;
+
+  for (const raw of rawItems) {
+    if (!isAugmentInCurrentSet(raw.apiName)) continue;
+    augmentCandidates++;
+    const aug = normalizeAugment(raw);
+    if (!aug) {
+      augmentSkipped++;
+      if (!pickAugmentIconPath(raw)) augmentMissingIcon++;
+      continue;
+    }
+    if (augmentMap.has(aug.apiName)) {
+      // Duplicate apiName — first-seen wins. Logged for visibility.
+      console.debug(`[TFT] Duplicate augment apiName skipped: ${aug.apiName}`);
+      continue;
+    }
+    augmentMap.set(aug.apiName, aug);
+  }
+
+  const augments: TFTAugment[] = [...augmentMap.values()].sort((a, b) => {
+    // Sort by tier (silver → gold → prismatic) then alphabetically
+    const tierOrder = { silver: 0, gold: 1, prismatic: 2 } as const;
+    const t = tierOrder[a.tier] - tierOrder[b.tier];
+    if (t !== 0) return t;
+    return a.name.localeCompare(b.name);
+  });
+
+  const augmentTierCounts = augments.reduce(
+    (acc, a) => { acc[a.tier] = (acc[a.tier] ?? 0) + 1; return acc; },
+    {} as Record<TFTAugmentTier, number>
+  );
+
+  console.info(
+    `[TFT] Augments: ${augments.length} kept / ${augmentCandidates} candidates ` +
+    `(${augmentSkipped} skipped, ${augmentMissingIcon} missing icon)`
+  );
+  console.info(
+    `[TFT] Augment tiers: ` +
+    Object.entries(augmentTierCounts).map(([k, v]) => `${k}=${v}`).join(", ")
+  );
+
   return {
     setNumber: CURRENT_SET,
     setName: set17?.name ?? `Set ${CURRENT_SET}`,
     champions,
     traits,
     items,
+    augments,
   };
 }

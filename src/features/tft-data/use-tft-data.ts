@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TFT_DATA_URL } from "./cdn";
 import { normalizeSetData, type RawTFTData } from "./normalize";
-import type { TFTSetData, TFTChampion, TFTTrait } from "./types";
+import type { TFTSetData, TFTChampion, TFTTrait, TFTAugment } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
 // Training dummies always available at cost 0 (excluded from normal filters)
@@ -76,6 +76,23 @@ export function useTFTData() {
     [traits]
   );
 
+  const augments: TFTAugment[] = query.data?.augments ?? [];
+
+  // O(1) lookup by apiName — the augment system identifies entries by apiName,
+  // not by display name, so all UI/dnd-kit code keys off this.
+  const augmentMap = useMemo(
+    () => new Map(augments.map((a) => [a.apiName, a])),
+    [augments]
+  );
+
+  // Pre-bucketed by tier — TraitsPanel / AugmentsPanel will render these in
+  // three columns without recomputing every render.
+  const augmentsByTier = useMemo(() => {
+    const out = { silver: [] as TFTAugment[], gold: [] as TFTAugment[], prismatic: [] as TFTAugment[] };
+    for (const a of augments) out[a.tier].push(a);
+    return out;
+  }, [augments]);
+
   return {
     ...query,
     champions,
@@ -83,6 +100,9 @@ export function useTFTData() {
     items: query.data?.items ?? [],
     traits,
     traitMap,
+    augments,
+    augmentMap,
+    augmentsByTier,
     setNumber: query.data?.setNumber ?? 17,
     setName: query.data?.setName ?? "",
     isUsingMockData: !query.data,

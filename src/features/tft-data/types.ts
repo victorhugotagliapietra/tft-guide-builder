@@ -47,10 +47,33 @@ export type TFTTrait = {
   hasEmblem: boolean;
 };
 
+// ---------------------------------------------------------------------------
+// Augments
+// ---------------------------------------------------------------------------
+
+export type TFTAugmentTier = "silver" | "gold" | "prismatic";
+
+export type TFTAugment = {
+  /** Stable, URL-safe id derived from apiName (e.g. "augment_recombobulator"). */
+  id: string;
+  apiName: string;
+  name: string;
+  /** Display description with CDragon templated placeholders preserved. */
+  description?: string;
+  /** Full CDragon HTTP URL for the augment icon. */
+  icon: string;
+  tier: TFTAugmentTier;
+  /** Trait apiNames this augment is locked to (CDragon `associatedTraits`). */
+  traits?: string[];
+  /** Champion apiNames this augment is tied to (rare — only when CDragon exposes it). */
+  relatedChampions?: string[];
+};
+
 export type TFTSetData = {
   setNumber: number;
   setName: string;
   champions: TFTChampion[];
   items: TFTItem[];
   traits: TFTTrait[];
+  augments: TFTAugment[];
 };
