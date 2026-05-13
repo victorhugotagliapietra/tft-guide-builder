@@ -360,6 +360,18 @@ function categorizeItem(item: RawItem): TFTItemCategory | null {
   return null;
 }
 
+// Non-playable champion names that CDragon sometimes includes in set data with
+// cost 1-5 (e.g. Blue Golem, Rift Scuttler). Lowercased for case-insensitive match.
+const CHAMPION_NAME_BLOCKLIST = new Set([
+  "golem",
+  "blue golem",
+  "blue sentinel",
+  "rift scuttler",
+  "scuttler",
+]);
+// Additional apiName pattern guard in case display names change between patches.
+const CHAMPION_API_BLOCKLIST = [/golem/i, /riftscuttler/i, /scuttler/i];
+
 function getBestIconPath(c: RawChampion): string {
   // CDragon tft/en_us.json uses "squareIcon" for the portrait-sized image.
   // Fall back to "icon" (splash art) or "tileIcon" if unavailable.
@@ -389,9 +401,18 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
   const champions: TFTChampion[] = rawChampions
     .filter((c) => {
       // Keep cost 1-5 playable champions only.
-      // This naturally excludes Training Dummy (cost 0 or non-standard),
-      // Blue Golem, Rift Scuttler, and other non-playable entries.
       if (!c.apiName || !c.name || c.cost < 1 || c.cost > 5) {
+        skipped++;
+        return false;
+      }
+      // Exclude non-playable NPCs (Golem, Rift Scuttler) that CDragon sometimes
+      // includes in set data with a valid cost value.
+      const nameLower = c.name.toLowerCase();
+      const apiLower = c.apiName.toLowerCase();
+      if (
+        CHAMPION_NAME_BLOCKLIST.has(nameLower) ||
+        CHAMPION_API_BLOCKLIST.some((p) => p.test(apiLower))
+      ) {
         skipped++;
         return false;
       }

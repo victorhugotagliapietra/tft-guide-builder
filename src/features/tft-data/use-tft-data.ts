@@ -13,9 +13,10 @@ const DUMMY_UNITS: TFTChampion[] = [
     name: "Training Dummy",
     cost: 0,
     traits: [],
-    squareIconPath: "",
-    iconUrl: "",
-    fallbackIconUrl: "",
+    squareIconPath: "ASSETS/Characters/TFT_TrainingDummy/HUD/Icons2D/TFT_TrainingDummy_Square.png",
+    iconUrl:
+      "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/assets/characters/tft_trainingdummy/hud/icons2d/tft_trainingdummy_square.png",
+    fallbackIconUrl: "https://rerollcdn.com/characters/Skin/17/Training%20Dummy.png",
   },
 ];
 

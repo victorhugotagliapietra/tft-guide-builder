@@ -46,10 +46,21 @@ export function computeActiveTraits(
   const resolveTrait = (token: string): TFTTrait | undefined =>
     traitMap.get(token) ?? byName.get(token);
 
+  // Deduplicate by championKey — placing the same champion twice should count
+  // as one toward trait synergies, matching actual game rules.
+  const seenKeys = new Set<string>();
+  const dedupedUnits: { championKey: string }[] = [];
+  for (const u of units) {
+    if (!seenKeys.has(u.championKey)) {
+      seenKeys.add(u.championKey);
+      dedupedUnits.push(u);
+    }
+  }
+
   // Count units contributing to each trait (keyed by resolved apiName so
   // different display-name aliases don't double-count)
   const counts = new Map<string, number>();
-  for (const unit of units) {
+  for (const unit of dedupedUnits) {
     const champion = championMap.get(unit.championKey);
     if (!champion) continue;
     for (const traitToken of champion.traits) {
