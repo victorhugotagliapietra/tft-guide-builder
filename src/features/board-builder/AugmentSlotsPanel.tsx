@@ -130,8 +130,12 @@ export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
   // grid and is center-aligned across the grid's full width — visually it lands
   // over the seam between the two columns, which reads as "centered above the
   // panel" and "above the second column" at the same time for a 2-col grid.
+  //
+  // -ml-2 pulls the panel ~8px closer to the board after the hex bump enlarged
+  // the central area. Negative margin (not a parent gap reduction) keeps the
+  // traits side spacing untouched.
   return (
-    <div className="shrink-0 flex flex-col gap-1.5 self-start">
+    <div className="shrink-0 flex flex-col gap-1.5 self-start -ml-2">
       <span className="text-[10px] font-semibold text-foreground/70 tracking-wider uppercase text-center">
         Augments
       </span>

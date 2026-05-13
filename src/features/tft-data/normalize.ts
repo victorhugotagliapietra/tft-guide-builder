@@ -468,6 +468,60 @@ const AUGMENT_ICON_BLOCKLIST: RegExp[] = [
   /ADMIN_Armorery_Icon/i,
 ];
 
+// ---------------------------------------------------------------------------
+// Augment apiName blocklist — known-broken icons that we've validated via
+// HEAD-probe against CDragon. These augments pass every pattern filter but
+// their .png genuinely 404s at runtime (CDragon ships the .tex path but never
+// the converted PNG). Removing them at normalize-time produces a clean catalog
+// with zero broken-image tiles in the UI.
+//
+// Audited 2026-05-13 against:
+//   https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/
+// Regenerate via the HEAD-probe script if/when CDragon adds the missing assets.
+// ---------------------------------------------------------------------------
+
+const BROKEN_AUGMENT_APINAMES = new Set<string>([
+  "TFT_Augment_AvengeTheFallen",
+  "TFT_Augment_AxiomArc3",
+  "TFT_Augment_Backup",
+  "TFT_Augment_BlossomingLotus1",
+  "TFT_Augment_BlossomingLotus2",
+  "TFT_Augment_BRB",
+  "TFT_Augment_CloseQuarters",
+  "TFT_Augment_CustomFitted",
+  "TFT_Augment_DawnbringersBlessing1",
+  "TFT_Augment_DawnbringersBlessing2",
+  "TFT_Augment_DefenseCall",
+  "TFT_Augment_EndlessConflagration",
+  "TFT_Augment_FinalPolish",
+  "TFT_Augment_FinalResistance",
+  "TFT_Augment_FutureSight2",
+  "TFT_Augment_Mentorship1",
+  "TFT_Augment_Mentorship2",
+  "TFT_Augment_MoneyHungryPlus",
+  "TFT_Augment_PiercingLotus1",
+  "TFT_Augment_PiercingLotus2",
+  "TFT_Augment_Pirates3",
+  "TFT_Augment_ShareTheSpotlight",
+  "TFT_Augment_Spellsword",
+  "TFT_Augment_StockMarket",
+  "TFT_Augment_SupportMining",
+  "TFT_Augment_SupportMiningPlus",
+  "TFT_Augment_SupportSentinel",
+  "TFT_Augment_SupportSentinel2",
+  "TFT_Augment_TheFloorIsLava",
+  "TFT_Augment_VerticallyInclined",
+  "TFT_Augment_Voidborne",
+  "TFT_Augment_VoidborneHR",
+  "TFT_Augment_WealthyRehab1",
+  "TFT_Augment_WealthyRehab2",
+  "TFT17_Augment_EmergencySupplies",
+  "TFT17_Augment_ShepherdAugment",
+  "TFT17_Augment_ShieldTank_DivinePaladins",
+  "TFT17_Augment_SnipersNest",
+  "TFT17_Augment_Weightlifting",
+]);
+
 function isAugmentInCurrentSet(apiName: string): boolean {
   return AUGMENT_UNIVERSAL_RE.test(apiName) || AUGMENT_CURRENT_SET_RE.test(apiName);
 }
@@ -770,6 +824,7 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
   let augmentSkippedOldSet = 0;
   let augmentSkippedMissingIcon = 0;
   let augmentSkippedBlockedIcon = 0;
+  let augmentSkippedBrokenIcon = 0;
 
   for (const raw of rawItems) {
     if (!isAugmentInCurrentSet(raw.apiName)) continue;
@@ -779,6 +834,14 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     // summary. normalizeAugment() also enforces these rules — we duplicate the
     // checks (cheap regex tests) so the counters reflect the actual reason
     // each candidate was dropped, not "skipped somewhere downstream".
+    if (BROKEN_AUGMENT_APINAMES.has(raw.apiName)) {
+      // Curated list of augments whose CDragon icon path resolves to a 404.
+      // Dropping them at normalize-time guarantees the UI never renders a
+      // broken-image tile or a placeholder card.
+      augmentSkippedBrokenIcon++;
+      console.debug(`[TFT] Augment with broken CDragon icon dropped: ${raw.apiName}`);
+      continue;
+    }
     if (AUGMENT_APINAME_BLOCKLIST.some((re) => re.test(raw.apiName))) {
       augmentSkippedBlocked++;
       continue;
@@ -831,7 +894,7 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     `[TFT] Augments: ${augments.length} kept / ${augmentCandidates} candidates ` +
     `(blocked=${augmentSkippedBlocked}, oldSet=${augmentSkippedOldSet}, ` +
     `missingIcon=${augmentSkippedMissingIcon}, blockedIcon=${augmentSkippedBlockedIcon}, ` +
-    `duplicates=${augmentDuplicates})`
+    `brokenIcon=${augmentSkippedBrokenIcon}, duplicates=${augmentDuplicates})`
   );
   console.info(
     `[TFT] Augment tiers: ` +

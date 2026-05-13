@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 
 // Match BoardGrid geometry (keep these in sync — author and viewer must see
 // the same hex positions/spacing for a guide to render identically).
-const HEX_W = 76;
-const HEX_H = 88;
+const HEX_W = 84;
+const HEX_H = 96;
 const ROW_PITCH = Math.round(HEX_H * 0.75);
 const GAP = 6;
 const CELL_W = HEX_W - GAP;
@@ -96,12 +96,15 @@ function ChampionImg({
   );
 }
 
+// Item icons anchored INSIDE the bottom of the hex (not below). Kept in sync
+// with BoardGrid's editable version — same sizing + position so guides render
+// identically for the author and the public viewer.
 function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
   const { items } = useTFTData();
   const itemMap = new Map(items.map((i) => [i.apiName, i]));
 
   return (
-    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
+    <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
         const item = itemMap.get(key);
         return item?.iconUrl ? (
@@ -109,12 +112,12 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
             key={i}
             src={item.iconUrl}
             alt={item.name}
-            className="w-3.5 h-3.5 rounded-sm object-cover ring-1 ring-black/40"
+            className="w-3 h-3 rounded-sm object-cover ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
             title={item.name}
             loading="lazy"
           />
         ) : (
-          <div key={i} className="w-3.5 h-3.5 rounded-sm bg-black/40" />
+          <div key={i} className="w-3 h-3 rounded-sm bg-black/40" />
         );
       })}
     </div>
@@ -165,24 +168,26 @@ export function ReadOnlyBoardGrid({ units }: Props) {
                     <div className="absolute" style={{ inset: 2, clipPath: CLIP }}>
                       <ChampionImg champion={champion} className="w-full h-full" />
                     </div>
-                    {/* Stars: 0 hidden, 1-2 silver, 3 gold */}
+                    {/* Stars anchored INSIDE the top of the hex (mirrors
+                        BoardGrid). 0 hidden, 1-2 silver, 3 gold. */}
                     {unit.starLevel > 0 && (
-                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 flex gap-px pointer-events-none">
+                      <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 flex gap-px pointer-events-none">
                         {Array.from({ length: unit.starLevel }).map((_, i) => (
                           <Star
                             key={i}
-                            size={11}
+                            size={9}
                             strokeWidth={1.5}
                             fill="currentColor"
+                            stroke="rgba(0,0,0,0.85)"
+                            style={{ paintOrder: "stroke fill", filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.7))" }}
                             className={cn(
-                              "drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]",
                               unit.starLevel === 3 ? "text-yellow-400" : "text-slate-200"
                             )}
                           />
                         ))}
                       </div>
                     )}
-                    {/* Items below the hex */}
+                    {/* Items inside the bottom of the hex */}
                     {(unit.items?.length ?? 0) > 0 && (
                       <ItemIcons itemKeys={unit.items} />
                     )}
