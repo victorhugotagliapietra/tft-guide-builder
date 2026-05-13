@@ -1,4 +1,4 @@
-import type { TFTChampion, TFTItem, TFTItemCategory, TFTTrait, TFTSetData, TraitBreakpoint } from "./types";
+import type { TFTChampion, TFTItem, TFTItemCategory, TFTTrait, TFTSetData, TraitBreakpoint, ItemRole } from "./types";
 import { championIconUrl, itemIconUrl, traitIconUrl, rerollCdnChampionUrl } from "./cdn";
 
 // ---------------------------------------------------------------------------
@@ -219,11 +219,18 @@ function isUsableItem(item: RawItem): boolean {
 const UNIVERSAL_ARTIFACT_RE = /^TFT_Item_Artifact_/i;
 const CURRENT_SET_ARTIFACT_RE = new RegExp(`^TFT${CURRENT_SET}_Item_Artifact_`, "i");
 
-// Radiant items in Set 17: items whose apiName ends with `_Radiant`. These are
-// upgraded variants (PsyOps trait items + Kayle's radiant artifact). Old-set
-// radiant items (TFT5_*Radiant, TFT_Item_RadiantVirtue) are already filtered
-// out by the prefix gate in isUsableItem.
+// Items whose apiName ends with `_Radiant` are upgraded variants of trait
+// items / artifacts. They are intentionally excluded from the catalog —
+// the editor no longer surfaces radiant variants as a separate category.
 const RADIANT_SUFFIX_RE = /_Radiant$/i;
+
+// Specific artifacts that should never appear in the Artifact tab. Identified
+// by exact apiName so the rule survives display-name changes.
+const BLOCKED_ARTIFACT_APINAMES = new Set<string>([
+  "TFT17_Item_Artifact_ZekesHeraldShadow", // "Zeke's Bleak Herald"
+  "TFT_Item_Artifact_WitheringRelic",      // "Withered Relic"
+  "TFT_Item_Artifact_CursedBlade",         // "Cursed Blade"
+]);
 
 // Current-set trait-item families: PsyOps and Anima Squad. We only accept
 // these explicit families instead of "any current-set item not otherwise
@@ -231,51 +238,118 @@ const RADIANT_SUFFIX_RE = /_Radiant$/i;
 const PSYOPS_ITEM_RE = new RegExp(`^TFT${CURRENT_SET}_Item_PsyOps_`, "i");
 const ANIMA_SQUAD_ITEM_RE = new RegExp(`^TFT${CURRENT_SET}_AnimaSquadItem_`, "i");
 
+// ---------------------------------------------------------------------------
+// Normal-item role inference
+// ---------------------------------------------------------------------------
+//
+// Each completed Normal item is a recipe of two components. The components
+// strongly suggest a role bucket. We map component apiNames to a coarse
+// "stat class" and derive the role from the pair. Component-based inference
+// avoids parsing free-form stat blobs; a small overrides Map handles items
+// whose effect/aura makes them feel different from their components.
+
+type StatClass = "ad" | "ap" | "tear" | "armor" | "mr" | "hp" | "crit" | "other";
+
+const COMPONENT_STAT_CLASS: Record<string, StatClass> = {
+  TFT_Item_BFSword: "ad",
+  TFT_Item_RecurveBow: "ad",
+  TFT_Item_NeedlesslyLargeRod: "ap",
+  TFT_Item_TearOfTheGoddess: "tear",
+  TFT_Item_ChainVest: "armor",
+  TFT_Item_NegatronCloak: "mr",
+  TFT_Item_GiantsBelt: "hp",
+  TFT_Item_SparringGloves: "crit",
+};
+
+// Apinames whose role isn't well-described by their composition (auras,
+// utility effects, etc.). Keep this small and well-motivated.
+const ITEM_ROLE_OVERRIDES: Record<string, ItemRole> = {
+  TFT_Item_ZekesHerald: "support",  // mana-aura support item
+  TFT_Item_BlueBuff: "ap",          // 2 tears but used by casters, not supports
+  TFT_Item_ArchangelsStaff: "ap",   // tear + rod — caster scaling
+  TFT_Item_ShojinsSpear: "fighter", // tear + bf — AD caster fighter
+  TFT_Item_SpearOfShojin: "fighter",
+};
+
+function compClass(apiName: string): StatClass {
+  return COMPONENT_STAT_CLASS[apiName] ?? "other";
+}
+
+/**
+ * Derive a role bucket from the composition pair. Order:
+ *   1. Hard override by apiName
+ *   2. Two defensive components (armor/mr/hp) → tank
+ *   3. Two tears OR rod + crit → ap
+ *   4. Any tear → support
+ *   5. Any rod → ap
+ *   6. Any BF → fighter
+ *   7. Fallback → flex
+ */
+function inferItemRole(apiName: string, composition: string[]): ItemRole {
+  if (ITEM_ROLE_OVERRIDES[apiName]) return ITEM_ROLE_OVERRIDES[apiName];
+
+  const classes = composition.map(compClass);
+  const isDefensive = (c: StatClass) => c === "armor" || c === "mr" || c === "hp";
+  const defensiveCount = classes.filter(isDefensive).length;
+
+  if (defensiveCount >= 2) return "tank";
+
+  const tears = classes.filter((c) => c === "tear").length;
+  const hasRod = classes.includes("ap");
+  const hasCrit = classes.includes("crit");
+  if (tears === 2 || (hasRod && hasCrit)) return "ap";
+
+  if (classes.includes("tear")) return "support";
+  if (hasRod) return "ap";
+  if (classes.includes("ad")) return "fighter";
+
+  return "flex";
+}
+
 /**
  * Categorize a valid TFT item, or return null to drop it entirely.
  *
  * Priority order:
- *   1. Emblem   — isEmblem flag OR has associatedTraits OR "emblem" in apiName
- *   2. Radiant  — apiName ends with `_Radiant` (Set 17 upgraded variants)
- *   3. Artifact — universal `TFT_Item_Artifact_*` OR current-set
- *                 `TFT{SET}_Item_Artifact_*` (champion artifacts)
- *   4. Trait    — explicit current-set trait families:
- *                   - PsyOps items (TFT{SET}_Item_PsyOps_*)
- *                   - Anima Squad items (TFT{SET}_AnimaSquadItem_*)
- *                 Anything else current-set (mode stances, unrelated items)
- *                 falls through to null.
- *   5. Normal   — universal TFT_Item_* with composition.length >= 2 (completed
- *                 recipe items)
- *   null        — uncategorizable; logged and excluded
+ *   1. Drop  _Radiant suffix items — upgraded variants are no longer surfaced
+ *   2. Drop  blacklisted artifact apiNames (Zeke's Bleak Herald, Withered
+ *           Relic, Cursed Blade)
+ *   3. Emblem    — isEmblem flag OR "emblem" in apiName
+ *   4. Artifact  — universal `TFT_Item_Artifact_*` OR `TFT{SET}_Item_Artifact_*`
+ *   5. Trait     — current-set PsyOps OR AnimaSquad items
+ *   6. Normal    — universal TFT_Item_* with composition.length >= 2
+ *   null         — uncategorizable; logged and excluded
  */
 function categorizeItem(item: RawItem): TFTItemCategory | null {
   const api = item.apiName;
   const apiLower = api.toLowerCase();
 
-  // 1. Emblem — must be flagged as emblem OR have "emblem" in apiName. The
-  // mere presence of `associatedTraits` is NOT a sufficient signal: trait
-  // items (Anima Squad, PsyOps) also reference traits via associatedTraits
-  // without being emblems.
+  // 1. Drop radiant variants entirely
+  if (RADIANT_SUFFIX_RE.test(api)) {
+    return null;
+  }
+
+  // 2. Drop specific blacklisted artifacts (still in CDragon, undesired in UI)
+  if (BLOCKED_ARTIFACT_APINAMES.has(api)) {
+    return null;
+  }
+
+  // 3. Emblem — flagged emblem OR "emblem" in apiName. The presence of
+  // `associatedTraits` alone is NOT enough (trait items also reference traits).
   if (item.isEmblem || apiLower.includes("emblem")) {
     return "emblem";
   }
 
-  // 2. Radiant — `_Radiant` suffix only (avoids matching names like RadiantField)
-  if (RADIANT_SUFFIX_RE.test(api)) {
-    return "radiant";
-  }
-
-  // 3. Artifact — universal pool + current-set champion artifacts
+  // 4. Artifact — universal pool + current-set champion artifacts
   if (UNIVERSAL_ARTIFACT_RE.test(api) || CURRENT_SET_ARTIFACT_RE.test(api)) {
     return "artifact";
   }
 
-  // 4. Trait — only explicit current-set trait families
+  // 5. Trait — only explicit current-set trait families
   if (PSYOPS_ITEM_RE.test(api) || ANIMA_SQUAD_ITEM_RE.test(api)) {
     return "trait";
   }
 
-  // 5. Normal — universal completed item (recipe of 2 components)
+  // 6. Normal — universal completed item (recipe of 2 components)
   if (
     UNIVERSAL_ITEM_RE.test(api) &&
     (item.composition?.length ?? 0) >= 2
@@ -283,7 +357,6 @@ function categorizeItem(item: RawItem): TFTItemCategory | null {
     return "normal";
   }
 
-  // Doesn't fit any tab → exclude from final list
   return null;
 }
 
@@ -386,6 +459,8 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
   let duplicates = 0;
   const items: TFTItem[] = [];
   let uncategorized = 0;
+  let blockedArtifactsRemoved = 0;
+  let radiantsRemoved = 0;
 
   for (const i of usableRawItems) {
     if (seenApiNames.has(i.apiName)) {
@@ -394,19 +469,29 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     }
     seenApiNames.add(i.apiName);
 
+    // Pre-count drops so the validation log is meaningful.
+    if (RADIANT_SUFFIX_RE.test(i.apiName)) radiantsRemoved++;
+    if (BLOCKED_ARTIFACT_APINAMES.has(i.apiName)) {
+      blockedArtifactsRemoved++;
+      console.debug(`[TFT] Blocked artifact removed: ${i.apiName} "${i.name}"`);
+    }
+
     const category = categorizeItem(i);
     if (category === null) {
       uncategorized++;
-      console.debug(`[TFT] Uncategorized item (excluded): ${i.apiName} "${i.name}"`);
       continue;
     }
+    const composition = i.composition ?? [];
     items.push({
       apiName: i.apiName,
       name: i.name,
       iconPath: i.icon,
       iconUrl: itemIconUrl(i.icon),
       category,
-      composition: i.composition ?? [],
+      composition,
+      ...(category === "normal"
+        ? { role: inferItemRole(i.apiName, composition) }
+        : {}),
       ...(category === "emblem" && (i.associatedTraits?.length ?? 0) > 0
         ? { associatedTrait: i.associatedTraits![0] }
         : {}),
@@ -420,7 +505,8 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
 
   console.info(
     `[TFT] Items: ${items.length} kept / ${totalRaw} raw ` +
-    `(${filteredOut} filtered, ${duplicates} duplicate apiNames, ${uncategorized} uncategorized)`
+    `(${filteredOut} filtered, ${duplicates} duplicate apiNames, ${uncategorized} uncategorized, ` +
+    `${radiantsRemoved} radiants removed, ${blockedArtifactsRemoved} artifacts blacklisted)`
   );
   console.info(
     `[TFT] Item categories: ` +

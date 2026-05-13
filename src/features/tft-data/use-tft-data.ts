@@ -44,10 +44,24 @@ export function useTFTData() {
 
   const baseChampions: TFTChampion[] = query.data?.champions ?? MOCK_CHAMPIONS;
 
-  const champions: TFTChampion[] = useMemo(
-    () => [...baseChampions, ...DUMMY_UNITS],
-    [baseChampions]
-  );
+  // Combine real roster with synthetic dummy units, deduped by apiName.
+  // Dedup defends against any future path where a dummy might end up in
+  // baseChampions (CDragon staging entries, mock overlap, etc.) — without
+  // this guard, a single source change could produce duplicate dummies that
+  // re-appear every time the search input is cleared.
+  const champions: TFTChampion[] = useMemo(() => {
+    const seen = new Set<string>();
+    const out: TFTChampion[] = [];
+    for (const c of [...baseChampions, ...DUMMY_UNITS]) {
+      if (seen.has(c.apiName)) {
+        console.debug(`[TFT] Skipping duplicate champion apiName: ${c.apiName}`);
+        continue;
+      }
+      seen.add(c.apiName);
+      out.push(c);
+    }
+    return out;
+  }, [baseChampions]);
 
   const championMap = useMemo(
     () => new Map(champions.map((c) => [c.apiName, c])),

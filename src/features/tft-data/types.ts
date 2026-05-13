@@ -14,8 +14,10 @@ export type TFTItemCategory =
   | "normal"
   | "emblem"
   | "artifact"
-  | "radiant"
   | "trait";
+
+/** Loose role tag for sorting the Normal tab. Derived from item composition. */
+export type ItemRole = "tank" | "support" | "flex" | "ap" | "fighter";
 
 export type TFTItem = {
   apiName: string;
@@ -24,6 +26,8 @@ export type TFTItem = {
   iconUrl: string;
   category: TFTItemCategory;
   composition: string[];
+  /** Only set on `category === "normal"` items — used to sort the Normal grid. */
+  role?: ItemRole;
   /** For emblem items: the trait apiName they grant. */
   associatedTrait?: string;
 };

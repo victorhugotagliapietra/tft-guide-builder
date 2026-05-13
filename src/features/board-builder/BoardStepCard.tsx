@@ -238,6 +238,7 @@ const SPECIAL_NAMES = new Set([
   "Practice Dummy",
   "Rift Scuttler",
   "Mini Black Ball",
+  "Golden Ox",
 ]);
 
 function isSpecial(c: TFTChampion): boolean {
@@ -248,6 +249,11 @@ function isSpecial(c: TFTChampion): boolean {
   );
 }
 
+function isTrainingDummy(c: TFTChampion): boolean {
+  const lower = c.name.toLowerCase();
+  return lower.includes("training") && lower.includes("dummy");
+}
+
 function sortChampions(champions: TFTChampion[]): TFTChampion[] {
   return [...champions].sort((a, b) => {
     const aS = isSpecial(a);
@@ -256,6 +262,38 @@ function sortChampions(champions: TFTChampion[]): TFTChampion[] {
     if (a.cost !== b.cost) return a.cost - b.cost;
     return a.name.localeCompare(b.name);
   });
+}
+
+/**
+ * Match a champion against a free-form search query.
+ *
+ * Behavior:
+ *   - empty query → match everything
+ *   - matches name substring (case-insensitive)
+ *   - matches any trait substring (case-insensitive)
+ *   - Training Dummy is a special case: it ONLY appears for empty query or
+ *     when the query is a substring of "training", "dummy", or
+ *     "training dummy". This prevents the dummy from leaking into unrelated
+ *     searches.
+ *
+ * The query is taken pre-lowercased to avoid recomputing it inside the loop.
+ */
+function matchesQuery(c: TFTChampion, q: string): boolean {
+  if (!q) return true;
+
+  if (isTrainingDummy(c)) {
+    return (
+      "training".includes(q) ||
+      "dummy".includes(q) ||
+      "training dummy".includes(q)
+    );
+  }
+
+  if (c.name.toLowerCase().includes(q)) return true;
+  for (const t of c.traits) {
+    if (t.toLowerCase().includes(q)) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,9 +315,13 @@ function ChampionPanel({
   const sorted = useMemo(() => sortChampions(champions), [champions]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return sorted;
     const q = search.trim().toLowerCase();
-    return sorted.filter((c) => c.name.toLowerCase().includes(q));
+    if (!q) return sorted;
+    // matchesQuery handles name + trait substring matching and the special
+    // Training-Dummy gating rule. Filter is pure — sorted is never mutated.
+    const result = sorted.filter((c) => matchesQuery(c, q));
+    console.debug(`[TFT] Champion search "${q}" → ${result.length} matches`);
+    return result;
   }, [sorted, search]);
 
   return (

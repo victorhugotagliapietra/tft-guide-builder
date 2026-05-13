@@ -10,14 +10,23 @@ import { cn } from "@/lib/utils";
 // Tab config
 // ---------------------------------------------------------------------------
 
-const TABS: TFTItemCategory[] = ["normal", "emblem", "artifact", "radiant", "trait"];
+const TABS: TFTItemCategory[] = ["normal", "emblem", "artifact", "trait"];
 
 const TAB_LABELS: Record<TFTItemCategory, string> = {
   normal: "Normal",
   emblem: "Emblems",
   artifact: "Artifact",
-  radiant: "Radiant",
   trait: "Traits",
+};
+
+// Sort order for the Normal tab — tank/support are defensive/utility staples
+// at the top; flex sits in the middle; AP/fighter rotate by composition.
+const ROLE_SORT_ORDER: Record<NonNullable<TFTItem["role"]>, number> = {
+  tank: 0,
+  support: 1,
+  flex: 2,
+  ap: 3,
+  fighter: 4,
 };
 
 // ---------------------------------------------------------------------------
@@ -97,18 +106,25 @@ export function ItemsPanel() {
   const [activeTab, setActiveTab] = useState<TFTItemCategory>("normal");
   const [search, setSearch] = useState("");
 
-  // Group by category — category is already on the model, no client-side logic needed
+  // Group by category — category is already on the model. The Normal bucket
+  // is pre-sorted by inferred role so the grid scans Tank → Support → Flex →
+  // AP → Fighter without any visible sub-tab.
   const byCategory = useMemo(() => {
     const map: Record<TFTItemCategory, TFTItem[]> = {
       normal: [],
       emblem: [],
       artifact: [],
-      radiant: [],
       trait: [],
     };
     for (const item of items) {
       map[item.category].push(item);
     }
+    map.normal.sort((a, b) => {
+      const ra = a.role ? ROLE_SORT_ORDER[a.role] : 99;
+      const rb = b.role ? ROLE_SORT_ORDER[b.role] : 99;
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name);
+    });
     return map;
   }, [items]);
 
