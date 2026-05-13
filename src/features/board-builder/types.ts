@@ -37,15 +37,19 @@ export const boardUnitSchema = z.object({
 
 export type BoardUnit = z.infer<typeof boardUnitSchema>;
 
-// Augment slot state: a fixed-length tuple of 4 entries.
+// Augment slot state: a fixed-length tuple of 6 entries.
 // Each entry is either an augment apiName (assigned) or null (empty slot).
 // Stored as a plain array so it serializes cleanly into the existing JSONB
 // `board_steps` column without requiring a migration.
-export const AUGMENT_SLOT_COUNT = 4;
+//
+// The schema deliberately omits `.length()` so guides saved with a previous
+// slot-count (this field has historically swung between 4 and 6) still parse.
+// The runtime normalizes any shape to AUGMENT_SLOT_COUNT — see the
+// `augmentSlots` useMemo in BoardStepCard.
+export const AUGMENT_SLOT_COUNT = 6;
 export const augmentSlotsSchema = z
   .array(z.string().nullable())
-  .length(AUGMENT_SLOT_COUNT)
-  .default([null, null, null, null]);
+  .default([null, null, null, null, null, null]);
 
 export const boardStepSchema = z.object({
   id: z.string(),
@@ -65,5 +69,5 @@ export type AugmentSlots = z.infer<typeof augmentSlotsSchema>;
 
 /** Build a fresh empty augment-slots array (always returns a new instance). */
 export function emptyAugmentSlots(): AugmentSlots {
-  return [null, null, null, null];
+  return Array.from({ length: AUGMENT_SLOT_COUNT }, () => null);
 }

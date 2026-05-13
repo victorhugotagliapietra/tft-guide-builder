@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTAugment, TFTAugmentTier } from "@/features/tft-data/types";
 import { Input } from "@/components/ui/input";
@@ -142,6 +142,7 @@ function TierHeader({ tier, count }: { tier: TFTAugmentTier; count: number }) {
 export function AugmentsPanel() {
   const { augmentsByTier } = useTFTData();
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Apply search filter without disturbing the per-tier ordering coming from
   // normalize.ts (silver → gold → prismatic, alpha within tier). We dedupe
@@ -174,11 +175,26 @@ export function AugmentsPanel() {
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           <Input
+            ref={searchInputRef}
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-6 pl-6 pr-2 text-xs w-32 bg-background/50"
+            className="h-6 pl-6 pr-6 text-xs w-32 bg-background/50"
           />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              title="Clear search"
+              onClick={() => {
+                setSearch("");
+                searchInputRef.current?.focus();
+              }}
+              className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-white/10 transition-colors"
+            >
+              <X className="h-3 w-3" strokeWidth={2.5} />
+            </button>
+          )}
         </div>
       </div>
 

@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { Star, X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
-import { useTFTData } from "@/features/tft-data/use-tft-data";
+import {
+  useTFTData,
+  TRAINING_DUMMY_API_NAME,
+  TRAINING_DUMMY_LOCAL_ICON,
+} from "@/features/tft-data/use-tft-data";
 import type { TFTChampion } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
 import { cn } from "@/lib/utils";
@@ -57,6 +61,20 @@ function ChampionImg({ champion, className }: { champion: TFTChampion; className
     setPrimaryFailed(false);
     setFallbackFailed(false);
   }, [champion.iconUrl, champion.fallbackIconUrl]);
+
+  // Training Dummy short-circuit — see BoardStepCard.ChampionImg for the
+  // rationale. Always renders the local /tft-data/* asset.
+  if (champion.apiName === TRAINING_DUMMY_API_NAME) {
+    return (
+      <img
+        src={TRAINING_DUMMY_LOCAL_ICON}
+        alt={champion.name}
+        className={cn("object-cover", className)}
+        loading="eager"
+        draggable={false}
+      />
+    );
+  }
 
   const src =
     !primaryFailed && champion.iconUrl ? champion.iconUrl

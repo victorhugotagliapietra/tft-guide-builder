@@ -8,8 +8,8 @@ import { AUGMENT_SLOT_COUNT } from "./types";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// AugmentSlotsPanel — 4 droppable augment slots arranged in a 2-row × 2-col
-// grid. Each slot:
+// AugmentSlotsPanel — droppable augment slots arranged in a 2-column grid
+// (rows = AUGMENT_SLOT_COUNT / 2, currently 3). Each slot:
 //   - Empty:    droppable target with `augslot:<index>` id
 //   - Filled:   shows the assigned augment icon, draggable as `slotaug:<index>`
 //   - Hovered while a `augment:*` / `slotaug:*` drag is in flight: highlights
@@ -126,10 +126,10 @@ type Props = {
 };
 
 export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
-  // 2-row × 2-col grid keeps the panel compact next to the board. The title
-  // sits above the grid and is center-aligned across the grid's full width
-  // (i.e. across both columns) so it always reads as the panel header even
-  // as the board geometry shifts.
+  // 2-column grid (rows derived from AUGMENT_SLOT_COUNT). Title sits above the
+  // grid and is center-aligned across the grid's full width — visually it lands
+  // over the seam between the two columns, which reads as "centered above the
+  // panel" and "above the second column" at the same time for a 2-col grid.
   return (
     <div className="shrink-0 flex flex-col gap-1.5 self-start">
       <span className="text-[10px] font-semibold text-foreground/70 tracking-wider uppercase text-center">

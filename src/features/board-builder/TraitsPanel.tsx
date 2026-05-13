@@ -196,7 +196,24 @@ export function TraitsPanel({ units }: Props) {
           No traits
         </p>
       ) : (
-        <div className="flex flex-col gap-[3px]">
+        // Internal vertical scroll with a stable gutter. We reserve the
+        // scrollbar's width at all times via `scrollbar-gutter: stable` so the
+        // panel never expands horizontally when the bar appears — this keeps
+        // the board centered and the augment panel aligned regardless of how
+        // many traits become active. The custom webkit scrollbar styling
+        // matches the items panel for visual consistency.
+        <div
+          className={cn(
+            "flex flex-col gap-[3px] overflow-y-auto pr-1",
+            "scroll-smooth",
+            "[&::-webkit-scrollbar]:w-1.5",
+            "[&::-webkit-scrollbar-track]:bg-transparent",
+            "[&::-webkit-scrollbar-thumb]:rounded-full",
+            "[&::-webkit-scrollbar-thumb]:bg-white/10",
+            "hover:[&::-webkit-scrollbar-thumb]:bg-white/25"
+          )}
+          style={{ maxHeight: 360, scrollbarGutter: "stable" }}
+        >
           {allTraits.map((at) => (
             <TraitRow key={at.trait.apiName} active={at} />
           ))}

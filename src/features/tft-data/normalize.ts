@@ -459,6 +459,13 @@ const AUGMENT_APINAME_BLOCKLIST: RegExp[] = [
 const AUGMENT_ICON_BLOCKLIST: RegExp[] = [
   /unusable/i,
   /_placeholder/i,
+  // CDragon ships several `Missing-T1/T2/T3` placeholder icons for augments
+  // that don't have authored art yet. The .png never resolves, so the augment
+  // would render as a broken image. Reject these outright — the loss is small
+  // (~6 augments at most) and the catalog stays clean.
+  /Missing-T[123]\.tex$/i,
+  // ChoiceUI/ADMIN_Armorery_Icon: CDragon's "Augment menu admin" placeholder.
+  /ADMIN_Armorery_Icon/i,
 ];
 
 function isAugmentInCurrentSet(apiName: string): boolean {
@@ -758,20 +765,49 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
 
   const augmentMap = new Map<string, TFTAugment>();
   let augmentCandidates = 0;
-  let augmentSkipped = 0;
-  let augmentMissingIcon = 0;
+  let augmentDuplicates = 0;
+  let augmentSkippedBlocked = 0;
+  let augmentSkippedOldSet = 0;
+  let augmentSkippedMissingIcon = 0;
+  let augmentSkippedBlockedIcon = 0;
 
   for (const raw of rawItems) {
     if (!isAugmentInCurrentSet(raw.apiName)) continue;
     augmentCandidates++;
+
+    // Inline the skip-reason categorization here so we can produce a meaningful
+    // summary. normalizeAugment() also enforces these rules — we duplicate the
+    // checks (cheap regex tests) so the counters reflect the actual reason
+    // each candidate was dropped, not "skipped somewhere downstream".
+    if (AUGMENT_APINAME_BLOCKLIST.some((re) => re.test(raw.apiName))) {
+      augmentSkippedBlocked++;
+      continue;
+    }
+    const iconPath = pickAugmentIconPath(raw);
+    if (!iconPath) {
+      augmentSkippedMissingIcon++;
+      console.debug(`[TFT] Augment missing icon, skipped: ${raw.apiName}`);
+      continue;
+    }
+    if (AUGMENT_ICON_BLOCKLIST.some((re) => re.test(iconPath))) {
+      augmentSkippedBlockedIcon++;
+      continue;
+    }
+    if (hasOldSetAugmentIconMarker(iconPath)) {
+      augmentSkippedOldSet++;
+      console.debug(`[TFT] Old-set augment dropped: ${raw.apiName} (${iconPath})`);
+      continue;
+    }
+
     const aug = normalizeAugment(raw);
     if (!aug) {
-      augmentSkipped++;
-      if (!pickAugmentIconPath(raw)) augmentMissingIcon++;
+      // Anything left here is a sanity-check failure inside normalizeAugment
+      // (name length / shape). Already rare, but count it under blocked.
+      augmentSkippedBlocked++;
       continue;
     }
     if (augmentMap.has(aug.apiName)) {
-      // Duplicate apiName — first-seen wins. Logged for visibility.
+      augmentDuplicates++;
       console.debug(`[TFT] Duplicate augment apiName skipped: ${aug.apiName}`);
       continue;
     }
@@ -793,7 +829,9 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
 
   console.info(
     `[TFT] Augments: ${augments.length} kept / ${augmentCandidates} candidates ` +
-    `(${augmentSkipped} skipped, ${augmentMissingIcon} missing icon)`
+    `(blocked=${augmentSkippedBlocked}, oldSet=${augmentSkippedOldSet}, ` +
+    `missingIcon=${augmentSkippedMissingIcon}, blockedIcon=${augmentSkippedBlockedIcon}, ` +
+    `duplicates=${augmentDuplicates})`
   );
   console.info(
     `[TFT] Augment tiers: ` +

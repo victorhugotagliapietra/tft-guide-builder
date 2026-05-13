@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTItem, TFTItemCategory } from "@/features/tft-data/types";
 import { Input } from "@/components/ui/input";
@@ -109,15 +109,22 @@ export function ItemsPanel() {
   const { items } = useTFTData();
   const [activeTab, setActiveTab] = useState<TFTItemCategory>("normal");
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Group by category — category is already on the model. The Normal bucket
-  // is pre-sorted by inferred role so the grid scans Tank → Support → Flex →
-  // AP → Fighter without any visible sub-tab.
+  // Group by category. The Normal bucket is pre-sorted by inferred role so
+  // the grid scans Tank → Support → Flex → AP → Fighter without a sub-tab.
   //
-  // Defensive apiName dedup: normalize.ts already dedupes when building the
-  // catalog, but we re-check here because role sorting can amplify any upstream
-  // duplicate into two adjacent identical tiles. The Set is built per-render
-  // (cheap — ~80 entries) and never mutates `items`.
+  // Two dedup layers (normalize.ts already dedupes upstream by apiName, but we
+  // re-check here because the symptom — duplicates in the Normal grid — has
+  // surfaced repeatedly):
+  //   1. apiName Set: drops any second entry with the same TFT_Item_* key
+  //   2. Normal-tab name Set: drops any second entry whose normalized display
+  //      name is identical to one already kept. This catches cases where two
+  //      *different* apiNames point at the same human-recognizable item
+  //      (e.g. a duplicate emblem mistakenly classified as Normal, or a
+  //      reroll-pool clone). Other tabs (Emblem/Artifact/Trait) skip the name
+  //      check because they legitimately host items with overlapping names
+  //      (e.g. trait items often share a base name with their universal cousin).
   const byCategory = useMemo(() => {
     const map: Record<TFTItemCategory, TFTItem[]> = {
       normal: [],
@@ -125,12 +132,37 @@ export function ItemsPanel() {
       artifact: [],
       trait: [],
     };
-    const seen = new Set<string>();
+    const seenApi = new Set<string>();
+    const seenNormalName = new Set<string>();
+    let droppedDupApi = 0;
+    let droppedDupName = 0;
+
     for (const item of items) {
-      if (seen.has(item.apiName)) continue;
-      seen.add(item.apiName);
+      if (seenApi.has(item.apiName)) {
+        droppedDupApi++;
+        continue;
+      }
+      seenApi.add(item.apiName);
+
+      if (item.category === "normal") {
+        const key = item.name.trim().toLowerCase();
+        if (seenNormalName.has(key)) {
+          droppedDupName++;
+          console.debug(`[TFT] Duplicate Normal item name dropped: ${item.name} (${item.apiName})`);
+          continue;
+        }
+        seenNormalName.add(key);
+      }
+
       map[item.category].push(item);
     }
+
+    if (droppedDupApi > 0 || droppedDupName > 0) {
+      console.info(
+        `[TFT] Items panel dedup: apiName=${droppedDupApi}, normalName=${droppedDupName}`
+      );
+    }
+
     // Sort returns a new array — we intentionally avoid mutating `items` and
     // the array we just constructed isn't shared externally, so in-place sort
     // here is safe and avoids an extra allocation per category.
@@ -160,11 +192,28 @@ export function ItemsPanel() {
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           <Input
+            ref={searchInputRef}
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-6 pl-6 pr-2 text-xs w-28 bg-background/50"
+            className="h-6 pl-6 pr-6 text-xs w-28 bg-background/50"
           />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              title="Clear search"
+              onClick={() => {
+                setSearch("");
+                // Keep keyboard focus on the input so the user can keep typing
+                // without re-clicking — matches native browser UX.
+                searchInputRef.current?.focus();
+              }}
+              className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-white/10 transition-colors"
+            >
+              <X className="h-3 w-3" strokeWidth={2.5} />
+            </button>
+          )}
         </div>
       </div>
 

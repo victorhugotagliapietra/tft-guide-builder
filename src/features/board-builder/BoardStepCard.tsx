@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -8,6 +9,7 @@ import {
   useDraggable,
   useDroppable,
   pointerWithin,
+  MeasuringStrategy,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
@@ -20,9 +22,14 @@ import {
   Trash2,
   Link,
   Search,
+  X as XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useTFTData } from "@/features/tft-data/use-tft-data";
+import {
+  useTFTData,
+  TRAINING_DUMMY_API_NAME,
+  TRAINING_DUMMY_LOCAL_ICON,
+} from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode } from "@/features/tft-data/planner-code";
 import type { TFTChampion, TFTItem } from "@/features/tft-data/types";
 import { ItemDragOverlay } from "./ItemsPanel";
@@ -143,6 +150,9 @@ function ChampionImg({
   champion: TFTChampion;
   className?: string;
 }) {
+  // Hooks must run unconditionally before any early return — the Training
+  // Dummy short-circuit happens AFTER the hooks so re-renders with different
+  // champion props don't change the hook-call order.
   const [primaryFailed, setPrimaryFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
 
@@ -152,6 +162,23 @@ function ChampionImg({
     setPrimaryFailed(false);
     setFallbackFailed(false);
   }, [champion.iconUrl, champion.fallbackIconUrl]);
+
+  // Training Dummy short-circuit: always render the local asset, never touch
+  // the fallback chain or CDragon/rerollcdn URLs. This keeps the dummy image
+  // identical across the champions list, board hexes, and drag overlay, and
+  // prevents the generic error-fallback path from accidentally loading a
+  // 404'd CDN sentinel image in its place.
+  if (champion.apiName === TRAINING_DUMMY_API_NAME) {
+    return (
+      <img
+        src={TRAINING_DUMMY_LOCAL_ICON}
+        alt={champion.name}
+        className={cn("object-cover", className)}
+        loading="eager"
+        draggable={false}
+      />
+    );
+  }
 
   const src =
     !primaryFailed && champion.iconUrl ? champion.iconUrl
@@ -333,6 +360,7 @@ function ChampionPanelContent({
   onChampionClick: (apiName: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const { champions } = useTFTData();
 
   const sorted = useMemo(() => sortChampions(champions), [champions]);
@@ -355,11 +383,30 @@ function ChampionPanelContent({
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           <Input
+            ref={searchInputRef}
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-6 pl-6 pr-2 text-xs w-32 bg-background/50"
+            className="h-6 pl-6 pr-6 text-xs w-32 bg-background/50"
           />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              title="Clear search"
+              onClick={() => {
+                // Clearing search restores `sorted` as the filtered list —
+                // the same array reference reused, so no re-allocation and
+                // crucially no chance of duplicate-Training-Dummy entries
+                // (champion dedup happens in useTFTData, never per-render).
+                setSearch("");
+                searchInputRef.current?.focus();
+              }}
+              className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-white/10 transition-colors"
+            >
+              <XIcon className="h-3 w-3" strokeWidth={2.5} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -699,10 +746,16 @@ export function BoardStepCard({
 
   const augmentSlots: AugmentSlots = useMemo(() => {
     const raw = step.augments;
-    if (Array.isArray(raw) && raw.length === AUGMENT_SLOT_COUNT) {
-      return raw as AugmentSlots;
-    }
-    return emptyAugmentSlots();
+    if (!Array.isArray(raw)) return emptyAugmentSlots();
+    if (raw.length === AUGMENT_SLOT_COUNT) return raw as AugmentSlots;
+    // Length mismatch (e.g. step saved when AUGMENT_SLOT_COUNT was 4 and we
+    // now render with 6, or vice-versa): pad/truncate without losing data.
+    // Existing assignments stay in their original slot indices, extra slots
+    // fill with null. Persistence picks up the new shape on the next save.
+    const out: AugmentSlots = emptyAugmentSlots();
+    const copyN = Math.min(raw.length, AUGMENT_SLOT_COUNT);
+    for (let i = 0; i < copyN; i++) out[i] = raw[i] ?? null;
+    return out;
   }, [step.augments]);
 
   /**
@@ -966,6 +1019,11 @@ export function BoardStepCard({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
+            // Recompute droppable rects continuously while dragging so the
+            // collision detector stays accurate during page scroll (otherwise
+            // dnd-kit caches positions at drag-start and drops can miss the
+            // correct hex/slot if the user scrolls the page mid-drag).
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
           >
             <div className="space-y-1">
               <div className="flex items-center justify-between">
@@ -984,8 +1042,11 @@ export function BoardStepCard({
               </div>
               {/* Board flanked by traits (left) and augment slots (right).
                   Center board area scrolls horizontally if the viewport is
-                  too narrow to host the bumped hex geometry without overflow. */}
-              <div className="flex items-start gap-3">
+                  too narrow to host the bumped hex geometry without overflow.
+                  Gap reduced from gap-3 to gap-2 to pull the augment panel
+                  closer to the board (also tightens traits-panel side equally,
+                  which keeps the board visually centered). */}
+              <div className="flex items-start gap-2">
                 <TraitsPanel units={step.units} />
                 <div className="flex-1 min-w-0 overflow-x-auto rounded-lg">
                   <BoardGrid
@@ -1025,11 +1086,22 @@ export function BoardStepCard({
               </div>
             </div>
 
-            <DragOverlay dropAnimation={null}>
-              {overlayChampion && <DragOverlayContent champion={overlayChampion} />}
-              {overlayItem && <ItemDragOverlay item={overlayItem} />}
-              {overlayAugment && <AugmentDragOverlay augment={overlayAugment} />}
-            </DragOverlay>
+            {/* Portal the DragOverlay to <body> so its `position: fixed`
+                resolves against the viewport, not the nearest ancestor with a
+                CSS `backdrop-filter` (which would create a containing block
+                and pin the overlay to that ancestor instead — manifesting as
+                "overlay frozen while page scrolls"). React preserves the
+                DndContext through the portal, so the overlay still receives
+                dnd-kit's positioning + modifier updates. */}
+            {typeof document !== "undefined" &&
+              createPortal(
+                <DragOverlay dropAnimation={null}>
+                  {overlayChampion && <DragOverlayContent champion={overlayChampion} />}
+                  {overlayItem && <ItemDragOverlay item={overlayItem} />}
+                  {overlayAugment && <AugmentDragOverlay augment={overlayAugment} />}
+                </DragOverlay>,
+                document.body
+              )}
           </DndContext>
         </div>
       )}
