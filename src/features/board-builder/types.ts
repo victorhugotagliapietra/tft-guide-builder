@@ -37,6 +37,16 @@ export const boardUnitSchema = z.object({
 
 export type BoardUnit = z.infer<typeof boardUnitSchema>;
 
+// Augment slot state: a fixed-length tuple of 4 entries.
+// Each entry is either an augment apiName (assigned) or null (empty slot).
+// Stored as a plain array so it serializes cleanly into the existing JSONB
+// `board_steps` column without requiring a migration.
+export const AUGMENT_SLOT_COUNT = 4;
+export const augmentSlotsSchema = z
+  .array(z.string().nullable())
+  .length(AUGMENT_SLOT_COUNT)
+  .default([null, null, null, null]);
+
 export const boardStepSchema = z.object({
   id: z.string(),
   title: z.string().min(1).max(120),
@@ -45,7 +55,15 @@ export const boardStepSchema = z.object({
   // HTML content from TipTap rich text editor
   description: z.string().max(5000).default(""),
   units: z.array(boardUnitSchema).default([]),
+  // 4-slot augment assignment — see augmentSlotsSchema for shape.
+  augments: augmentSlotsSchema,
   sortOrder: z.number().int(),
 });
 
 export type BoardStep = z.infer<typeof boardStepSchema>;
+export type AugmentSlots = z.infer<typeof augmentSlotsSchema>;
+
+/** Build a fresh empty augment-slots array (always returns a new instance). */
+export function emptyAugmentSlots(): AugmentSlots {
+  return [null, null, null, null];
+}

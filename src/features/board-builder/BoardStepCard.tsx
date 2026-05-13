@@ -26,12 +26,16 @@ import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode } from "@/features/tft-data/planner-code";
 import type { TFTChampion, TFTItem } from "@/features/tft-data/types";
 import { ItemDragOverlay } from "./ItemsPanel";
+import { AugmentDragOverlay, AugmentsPanel } from "./AugmentsPanel";
 import { BOARD_SIZE } from "./grid";
 import {
   STEP_TYPES,
   STEP_TYPE_LABELS,
+  AUGMENT_SLOT_COUNT,
+  emptyAugmentSlots,
   type BoardStep,
   type BoardUnit,
+  type AugmentSlots,
 } from "./types";
 import { BoardGrid } from "./BoardGrid";
 import { ItemsPanel } from "./ItemsPanel";
@@ -64,20 +68,39 @@ import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Drag zones — droppable IDs encode the zone type:
-//   "hex:<position>"  → board hex (drop target for champions & items, source for board units)
-//   "panel:trash"     → champion/items panel area (drop target to remove a board unit)
-//   "champion:<api>"  → draggable from champion pool (source only)
-//   "item:<api>"      → draggable from item pool (source only)
+//   "hex:<position>"    → board hex (drop target for champions & items, source for board units)
+//   "panel:trash"       → champions/augments/items panel area (drop target to remove a board unit)
+//   "champion:<api>"    → draggable from champion pool (source only)
+//   "item:<api>"        → draggable from item pool (source only)
+//   "augment:<api>"     → draggable from augments pool (source only)
+//   "augslot:<index>"   → augment slot (drop target only)
+//   "slotaug:<index>"   → augment currently in slot N (source only — drag to swap/remove)
 //
 // pointerWithin (not closestCenter) is used so that:
 //   - dropping outside every zone yields `over === null` → triggers removal of
-//     board units (closestCenter never returns null, which broke removal)
+//     board units or augment slots (closestCenter never returns null)
 //   - large container droppables (panel:trash) never "win" over precise hexes
+//
+// Augment drags are *restricted* to augslot zones — they cannot ever resolve
+// to a hex, the trash container, or anything else. This is enforced inside
+// the collision detector below so misaimed drops simply cancel instead of
+// silently landing somewhere unexpected.
 // ---------------------------------------------------------------------------
 
 const dragCollisionDetection: CollisionDetection = (args) => {
   const hits = pointerWithin(args);
   if (hits.length === 0) return [];
+
+  const activeId = String(args.active.id);
+
+  // Augment drags (from pool or from an existing slot) may only target an
+  // augment slot. Everything else cancels (returns []) so the drop becomes a
+  // no-op or — for slot sources — a "remove" via `over === null` in dragEnd.
+  if (activeId.startsWith("augment:") || activeId.startsWith("slotaug:")) {
+    const slot = hits.find((c) => String(c.id).startsWith("augslot:"));
+    return slot ? [slot] : [];
+  }
+
   // Hex always wins over the surrounding trash container — otherwise an
   // occupied hex inside the trash zone could ambiguously resolve to trash.
   const hex = hits.find((c) => String(c.id).startsWith("hex:"));
@@ -299,17 +322,15 @@ function matchesQuery(c: TFTChampion, q: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Champion panel — droppable target for "remove via drag"
+// Champion panel content — the outer card wrapper (and trash-target styling)
+// is supplied by the tabbed shell in BoardStepCard so the Champions/Augments
+// tabs can share a single visual frame.
 // ---------------------------------------------------------------------------
 
-function ChampionPanel({
+function ChampionPanelContent({
   onChampionClick,
-  isRemoveTarget,
-  isOver,
 }: {
   onChampionClick: (apiName: string) => void;
-  isRemoveTarget: boolean;
-  isOver: boolean;
 }) {
   const [search, setSearch] = useState("");
   const { champions } = useTFTData();
@@ -327,22 +348,10 @@ function ChampionPanel({
   }, [sorted, search]);
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 min-h-0 rounded-xl transition-colors p-3 border border-white/5 bg-background/30",
-        isRemoveTarget && "ring-2 ring-destructive/50 border-destructive/40",
-        isOver && isRemoveTarget && "bg-destructive/15"
-      )}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-foreground/80 tracking-wide uppercase">
-          {isRemoveTarget ? (
-            <span className="text-destructive">Drop to remove</span>
-          ) : (
-            "Champions"
-          )}
-        </span>
+    <div className="flex flex-col gap-2 min-h-0">
+      {/* Header — search lives on the right; the section label is owned by
+          the tab bar above and is intentionally not duplicated here. */}
+      <div className="flex items-center justify-end gap-2">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           <Input
@@ -369,6 +378,76 @@ function ChampionPanel({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tabbed pool shell — wraps Champions/Augments content in a single card and
+// inherits the "drop to remove" highlighting that previously lived on the
+// champion panel. Tab state is owned by the parent so the active tab persists
+// across re-renders and external state changes don't reset it.
+// ---------------------------------------------------------------------------
+
+type PoolTab = "champions" | "augments";
+
+function PoolPanel({
+  activeTab,
+  onTabChange,
+  onChampionClick,
+  isRemoveTarget,
+  isOver,
+}: {
+  activeTab: PoolTab;
+  onTabChange: (tab: PoolTab) => void;
+  onChampionClick: (apiName: string) => void;
+  isRemoveTarget: boolean;
+  isOver: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 min-h-0 rounded-xl transition-colors p-3 border border-white/5 bg-background/30",
+        isRemoveTarget && "ring-2 ring-destructive/50 border-destructive/40",
+        isOver && isRemoveTarget && "bg-destructive/15"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        {/* Tab bar */}
+        <div className="flex gap-0.5 bg-muted/20 rounded-md p-0.5">
+          {(["champions", "augments"] as PoolTab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onTabChange(tab)}
+              className={cn(
+                "px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase rounded transition-all",
+                activeTab === tab
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground/70"
+              )}
+            >
+              {tab === "champions" ? "Champions" : "Augments"}
+            </button>
+          ))}
+        </div>
+
+        {/* Remove-target hint */}
+        {isRemoveTarget && (
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">
+            Drop to remove
+          </span>
+        )}
+      </div>
+
+      {/* Content swap — keep both panels mounted is overkill for this app,
+          so we render only the active one. Search state inside each panel
+          will reset on tab change, which is the expected behavior. */}
+      {activeTab === "champions" ? (
+        <ChampionPanelContent onChampionClick={onChampionClick} />
+      ) : (
+        <AugmentsPanel />
+      )}
     </div>
   );
 }
@@ -402,7 +481,7 @@ export function BoardStepCard({
   const [description, setDescription] = useState(step.description);
   // Local input text for level so the user can clear the field while typing
   const [levelText, setLevelText] = useState(String(step.level));
-  const { championMap, items: tftItems, setNumber } = useTFTData();
+  const { championMap, augmentMap, items: tftItems, setNumber } = useTFTData();
 
   const itemMap = useMemo(
     () => new Map(tftItems.map((i) => [i.apiName, i])),
@@ -430,6 +509,9 @@ export function BoardStepCard({
     | { zone: "board"; pos: number }
     | { zone: "champion-pool"; apiName: string }
     | { zone: "item-pool"; apiName: string }
+    | { zone: "augment-pool"; apiName: string }
+    | { zone: "augment-slot"; index: number }   // droppable target
+    | { zone: "slot-aug"; index: number }       // draggable from a slot (source)
     | { zone: "remove" }
     | { zone: "unknown" };
 
@@ -443,6 +525,15 @@ export function BoardStepCard({
     }
     if (raw.startsWith("item:")) {
       return { zone: "item-pool", apiName: raw.slice(5) };
+    }
+    if (raw.startsWith("augment:")) {
+      return { zone: "augment-pool", apiName: raw.slice(8) };
+    }
+    if (raw.startsWith("augslot:")) {
+      return { zone: "augment-slot", index: parseInt(raw.slice(8), 10) };
+    }
+    if (raw.startsWith("slotaug:")) {
+      return { zone: "slot-aug", index: parseInt(raw.slice(8), 10) };
     }
     if (raw === "panel:trash") return { zone: "remove" };
     return { zone: "unknown" };
@@ -515,6 +606,35 @@ export function BoardStepCard({
       });
       return;
     }
+
+    // ----- Source: augment pool -----
+    if (source.zone === "augment-pool") {
+      // Only augment slots can be targets — the collision detector already
+      // restricts this, but we re-check defensively so the contract is local.
+      if (destination.zone !== "augment-slot") return;
+      assignAugmentToSlot(source.apiName, destination.index);
+      return;
+    }
+
+    // ----- Source: an augment already in a slot -----
+    if (source.zone === "slot-aug") {
+      // slot → outside any droppable  ⇒ remove
+      if (!over) {
+        removeAugmentFromSlot(source.index);
+        return;
+      }
+      // slot → slot  ⇒ swap (or move into empty slot)
+      if (destination.zone === "augment-slot") {
+        moveOrSwapAugments(source.index, destination.index);
+        return;
+      }
+      // slot → remove zone  ⇒ remove
+      if (destination.zone === "remove") {
+        removeAugmentFromSlot(source.index);
+        return;
+      }
+      return;
+    }
   }
 
   function handleDragCancel() {
@@ -569,6 +689,64 @@ export function BoardStepCard({
     setSelectedPos(null);
   }
 
+  // -------------------------------------------------------------------------
+  // Augment slot mutation
+  // -------------------------------------------------------------------------
+  //
+  // `step.augments` is guaranteed to be a length-4 array by the zod schema,
+  // but defensive: if a guide was saved before this field existed, parsing
+  // applies the default. We use a getter so every helper sees a stable shape.
+
+  const augmentSlots: AugmentSlots = useMemo(() => {
+    const raw = step.augments;
+    if (Array.isArray(raw) && raw.length === AUGMENT_SLOT_COUNT) {
+      return raw as AugmentSlots;
+    }
+    return emptyAugmentSlots();
+  }, [step.augments]);
+
+  /**
+   * Assign an augment apiName to a slot.
+   *
+   * Enforces "no duplicate augment assignments" by clearing any other slot
+   * that already contains this apiName. This converts "drag the same augment
+   * into a different slot" into a move, which feels natural to the user.
+   */
+  function assignAugmentToSlot(apiName: string, slotIdx: number) {
+    if (slotIdx < 0 || slotIdx >= AUGMENT_SLOT_COUNT) return;
+    const next = augmentSlots.map((cur, i) => {
+      if (i === slotIdx) return apiName;
+      if (cur === apiName) return null; // remove duplicate from prior slot
+      return cur;
+    });
+    onUpdate(step.id, { augments: next });
+  }
+
+  /**
+   * Swap two augment slots (or move into an empty slot).
+   * No-op if either index is out of range or the slots are identical.
+   */
+  function moveOrSwapAugments(fromIdx: number, toIdx: number) {
+    if (fromIdx === toIdx) return;
+    if (fromIdx < 0 || toIdx < 0) return;
+    if (fromIdx >= AUGMENT_SLOT_COUNT || toIdx >= AUGMENT_SLOT_COUNT) return;
+    const fromVal = augmentSlots[fromIdx] ?? null;
+    if (!fromVal) return;
+    const toVal = augmentSlots[toIdx] ?? null;
+    const next = augmentSlots.map((cur, i) => {
+      if (i === fromIdx) return toVal;
+      if (i === toIdx) return fromVal;
+      return cur;
+    });
+    onUpdate(step.id, { augments: next });
+  }
+
+  function removeAugmentFromSlot(slotIdx: number) {
+    if (slotIdx < 0 || slotIdx >= AUGMENT_SLOT_COUNT) return;
+    const next = augmentSlots.map((cur, i) => (i === slotIdx ? null : cur));
+    onUpdate(step.id, { augments: next });
+  }
+
   function handleRemoveItem(pos: number, itemIndex: number) {
     onUpdate(step.id, {
       units: step.units.map((u) =>
@@ -618,9 +796,35 @@ export function BoardStepCard({
     return itemMap.get(activeDragId.replace("item:", "")) ?? null;
   }, [activeDragId, itemMap]);
 
+  // Overlay preview for both augment-pool drags and slot drags.
+  const overlayAugment = useMemo(() => {
+    if (!activeDragId) return null;
+    if (activeDragId.startsWith("augment:")) {
+      return augmentMap.get(activeDragId.slice("augment:".length)) ?? null;
+    }
+    if (activeDragId.startsWith("slotaug:")) {
+      const idx = parseInt(activeDragId.slice("slotaug:".length), 10);
+      const api = augmentSlots[idx];
+      return api ? augmentMap.get(api) ?? null : null;
+    }
+    return null;
+  }, [activeDragId, augmentMap, augmentSlots]);
+
   const isDraggingFromPanel = !!(activeDragId?.startsWith("champion:"));
   const isDraggingFromBoard = !!(activeDragId?.startsWith("hex:"));
   const isDraggingItem = !!(activeDragId?.startsWith("item:"));
+  // True for both augment-pool drags and assigned-slot drags — used to:
+  //   - highlight droppable slots in AugmentSlotsPanel
+  //   - signal the trash zone for "drag-out-to-remove" on assigned slots
+  const isDraggingAugment =
+    !!(activeDragId?.startsWith("augment:")) ||
+    !!(activeDragId?.startsWith("slotaug:"));
+  const isDraggingFromSlot = !!(activeDragId?.startsWith("slotaug:"));
+
+  // Pool tab state — survives drag interactions because it's owned at the
+  // step-card level (not inside PoolPanel) so we don't lose the user's tab
+  // selection when the tree re-renders during a drag.
+  const [poolTab, setPoolTab] = useState<PoolTab>("champions");
 
   const { isOver: isTrashOver, setNodeRef: setTrashRef } = useDroppable({ id: "panel:trash" });
 
@@ -794,20 +998,26 @@ export function BoardStepCard({
                     isDraggingItem={isDraggingItem}
                   />
                 </div>
-                <AugmentSlotsPanel />
+                <AugmentSlotsPanel
+                  slots={augmentSlots}
+                  isDraggingAugment={isDraggingAugment}
+                />
               </div>
             </div>
 
-            {/* Two-column: champions (flex) + items (fixed 380px to fit a 7-icon
-                grid at the new 10% smaller tile size with extra breathing room)
-                — entire area is the removal drop zone */}
+            {/* Two-column: pool (Champions/Augments tabs, flex) + items (fixed
+                380px to fit a 7-icon grid at the new 10% smaller tile size
+                with extra breathing room) — entire area is the removal drop
+                zone for both board units AND assigned augments. */}
             <div
               ref={setTrashRef}
               className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 pt-1 border-t border-border/40"
             >
-              <ChampionPanel
+              <PoolPanel
+                activeTab={poolTab}
+                onTabChange={setPoolTab}
                 onChampionClick={placeChampionAtFirstEmpty}
-                isRemoveTarget={isDraggingFromBoard}
+                isRemoveTarget={isDraggingFromBoard || isDraggingFromSlot}
                 isOver={isTrashOver}
               />
               <div className="rounded-xl p-3 border border-white/5 bg-background/30">
@@ -818,6 +1028,7 @@ export function BoardStepCard({
             <DragOverlay dropAnimation={null}>
               {overlayChampion && <DragOverlayContent champion={overlayChampion} />}
               {overlayItem && <ItemDragOverlay item={overlayItem} />}
+              {overlayAugment && <AugmentDragOverlay augment={overlayAugment} />}
             </DragOverlay>
           </DndContext>
         </div>

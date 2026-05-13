@@ -6,14 +6,16 @@ import type { TFTChampion } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
 import { cn } from "@/lib/utils";
 
-// Match BoardGrid geometry
+// Match BoardGrid geometry (keep these in sync — author and viewer must see
+// the same hex positions/spacing for a guide to render identically).
 const HEX_W = 76;
 const HEX_H = 88;
 const ROW_PITCH = Math.round(HEX_H * 0.75);
-const GAP = 4;
+const GAP = 6;
 const CELL_W = HEX_W - GAP;
 const CELL_H = HEX_H - GAP;
 const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+const EMPTY_HEX_BORDER = "bg-white/[0.07]";
 
 const CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2;
 const CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H + 20;
@@ -169,10 +171,17 @@ export function ReadOnlyBoardGrid({ units }: Props) {
                     )}
                   </>
                 ) : (
-                  <div
-                    className="absolute inset-0 bg-muted/12"
-                    style={{ clipPath: CLIP }}
-                  />
+                  <>
+                    {/* Subtle hex outline — see BoardGrid for the same technique. */}
+                    <div
+                      className={cn("absolute inset-0", EMPTY_HEX_BORDER)}
+                      style={{ clipPath: CLIP }}
+                    />
+                    <div
+                      className="absolute bg-muted/15"
+                      style={{ inset: 1.5, clipPath: CLIP }}
+                    />
+                  </>
                 )}
               </div>
             );

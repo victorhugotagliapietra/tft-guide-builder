@@ -388,6 +388,22 @@ const CHAMPION_NAME_BLOCKLIST = new Set([
 // Additional apiName pattern guard in case display names change between patches.
 const CHAMPION_API_BLOCKLIST = [/golem/i, /riftscuttler/i, /scuttler/i];
 
+// ---------------------------------------------------------------------------
+// Per-item icon URL overrides for assets CDragon doesn't actually serve.
+// Keep this list short and document each entry — every override is technical
+// debt against a missing upstream file.
+// ---------------------------------------------------------------------------
+
+const ITEM_ICON_URL_OVERRIDES: Record<string, string> = {
+  // Horizon Focus: CDragon lists the icon at
+  //   ASSETS/Maps/TFT/Icons/Items/Hexcore/TFT_Item_Artifact_HorizonFocus.TFT_Set13.tex
+  // but the converted .png is not present on the CDN (404). Fall back to
+  // DDragon's authoritative LoL item icon (id 4628) — pinned to a stable
+  // DDragon version since DDragon keeps old patch URLs live indefinitely.
+  TFT_Item_Artifact_HorizonFocus:
+    "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/item/4628.png",
+};
+
 function getBestIconPath(c: RawChampion): string {
   // CDragon tft/en_us.json uses "squareIcon" for the portrait-sized image.
   // Fall back to "icon" (splash art) or "tileIcon" if unavailable.
@@ -699,11 +715,15 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
       continue;
     }
     const composition = i.composition ?? [];
+    // Apply per-item icon URL override (currently only Horizon Focus — CDragon
+    // ships the path but not the served .png). Falls through to the standard
+    // assetUrl conversion when no override exists.
+    const iconUrl = ITEM_ICON_URL_OVERRIDES[i.apiName] ?? itemIconUrl(i.icon);
     items.push({
       apiName: i.apiName,
       name: i.name,
       iconPath: i.icon,
-      iconUrl: itemIconUrl(i.icon),
+      iconUrl,
       category,
       composition,
       ...(category === "normal"

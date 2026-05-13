@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { BoardStep } from "./types";
+import { emptyAugmentSlots } from "./types";
 
 export function useBoardSteps() {
   const [steps, setSteps] = useState<BoardStep[]>([]);
@@ -13,6 +14,7 @@ export function useBoardSteps() {
       stepType: "early",
       description: "",
       units: [],
+      augments: emptyAugmentSlots(),
       sortOrder: steps.length,
     };
     setSteps((prev) => [...prev, newStep]);

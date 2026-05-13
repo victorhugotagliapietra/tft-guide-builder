@@ -5,7 +5,13 @@ import { normalizeSetData, type RawTFTData } from "./normalize";
 import type { TFTSetData, TFTChampion, TFTTrait, TFTAugment } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
-// Training dummies always available at cost 0 (excluded from normal filters)
+// Training dummies always available at cost 0 (excluded from normal filters).
+//
+// CDragon's nominal path (ASSETS/UX/TFT/ChampionSplashes/TFTDebug_Dummy_Mobile.tex)
+// is not actually served at the runtime CDN — the championsplashes directory
+// isn't present under the latest export. metatft hosts a stable mirror that
+// renders the TFT-styled dummy portrait, so we use that as primary and fall
+// back to CDragon's champion-icons sentinel as a last resort.
 const DUMMY_UNITS: TFTChampion[] = [
   {
     apiName: "TFT_TrainingDummy",
@@ -13,10 +19,10 @@ const DUMMY_UNITS: TFTChampion[] = [
     name: "Training Dummy",
     cost: 0,
     traits: [],
-    squareIconPath: "ASSETS/Characters/TFT_TrainingDummy/HUD/Icons2D/TFT_TrainingDummy_Square.png",
-    iconUrl:
-      "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/assets/characters/tft_trainingdummy/hud/icons2d/tft_trainingdummy_square.png",
-    fallbackIconUrl: "https://rerollcdn.com/characters/Skin/17/Training%20Dummy.png",
+    squareIconPath: "ASSETS/UX/TFT/ChampionSplashes/TFTDebug_Dummy_Mobile.png",
+    iconUrl: "https://cdn.metatft.com/file/metatft/champions/tft_trainingdummy.png",
+    fallbackIconUrl:
+      "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/-1.png",
   },
 ];
 

@@ -67,6 +67,10 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
     id: `item:${item.apiName}`,
   });
 
+  // No scale/transform on hover — the items grid is dense (7 columns) and any
+  // size change caused layout shifts, overflow flicker, and hover oscillation
+  // (the growing tile would push its own edge under/past the cursor). We keep
+  // visual feedback to ring/brightness only so each tile's footprint is fixed.
   return (
     <div
       ref={setNodeRef}
@@ -75,8 +79,8 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
       style={{ touchAction: "none" }}
       title={item.name}
       className={cn(
-        "w-10 h-10 rounded-md overflow-hidden ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none transition-all duration-150 relative",
-        "hover:ring-white/40 hover:scale-110 hover:brightness-110 hover:z-10",
+        "w-10 h-10 rounded-md overflow-hidden ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none transition-[box-shadow,filter,background-color] duration-150 relative",
+        "hover:ring-white/40 hover:brightness-110",
         isDragging && "opacity-40"
       )}
     >
@@ -109,6 +113,11 @@ export function ItemsPanel() {
   // Group by category — category is already on the model. The Normal bucket
   // is pre-sorted by inferred role so the grid scans Tank → Support → Flex →
   // AP → Fighter without any visible sub-tab.
+  //
+  // Defensive apiName dedup: normalize.ts already dedupes when building the
+  // catalog, but we re-check here because role sorting can amplify any upstream
+  // duplicate into two adjacent identical tiles. The Set is built per-render
+  // (cheap — ~80 entries) and never mutates `items`.
   const byCategory = useMemo(() => {
     const map: Record<TFTItemCategory, TFTItem[]> = {
       normal: [],
@@ -116,9 +125,15 @@ export function ItemsPanel() {
       artifact: [],
       trait: [],
     };
+    const seen = new Set<string>();
     for (const item of items) {
+      if (seen.has(item.apiName)) continue;
+      seen.add(item.apiName);
       map[item.category].push(item);
     }
+    // Sort returns a new array — we intentionally avoid mutating `items` and
+    // the array we just constructed isn't shared externally, so in-place sort
+    // here is safe and avoids an extra allocation per category.
     map.normal.sort((a, b) => {
       const ra = a.role ? ROLE_SORT_ORDER[a.role] : 99;
       const rb = b.role ? ROLE_SORT_ORDER[b.role] : 99;

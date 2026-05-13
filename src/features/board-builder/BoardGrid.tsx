@@ -14,10 +14,20 @@ import { cn } from "@/lib/utils";
 const HEX_W = 76;
 const HEX_H = 88;
 const ROW_PITCH = Math.round(HEX_H * 0.75); // 66px
-const GAP = 4;
+// GAP = inter-hex spacing in pixels. We previously used 4px; bumping to 6px
+// gives a noticeably cleaner separation between adjacent hexes without
+// changing the overall grid dimensions. CELL_W/CELL_H shrink to match so the
+// hex polygon stays centered in its cell.
+const GAP = 6;
 const CELL_W = HEX_W - GAP;
 const CELL_H = HEX_H - GAP;
 const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+
+// Tone used for the subtle outline around empty hexes. A separate layer painted
+// at full footprint with this color is partially covered by the inset inner
+// fill, leaving a hairline ring visible — gives each empty cell a defined
+// edge without painting an actual stroked border (which clip-path can't do).
+const EMPTY_HEX_BORDER = "bg-white/[0.07]";
 
 export const HEX_CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2;
 // Extra bottom space for item icons (absolute -bottom-3.5 = 14px) and stars (-bottom-0.5 = 2px)
@@ -171,8 +181,10 @@ function EditableItemIcons({
             }}
             className={cn(
               "pointer-events-auto relative w-4 h-4 rounded-sm ring-1 ring-black/40",
-              "transition-all duration-100",
-              "hover:scale-125 hover:ring-destructive/80 hover:z-10",
+              "transition-[box-shadow,filter] duration-100",
+              // No scale: stable footprint matches ItemsPanel decision; the
+              // destructive ring + X overlay below signals "click to remove".
+              "hover:ring-destructive/80",
               "group/item"
             )}
             aria-label={`Remove ${item?.name ?? key}`}
@@ -266,15 +278,26 @@ function DroppableHex({
       className="relative group/hex"
     >
       {isEmpty && (
-        <div
-          className={cn(
-            "absolute inset-0 transition-colors",
-            "bg-muted/12",
-            isPlaceTarget && "bg-primary/15",
-            isOver && "bg-primary/30"
-          )}
-          style={{ clipPath: CLIP }}
-        />
+        <>
+          {/* Outer hex border layer — fills the full cell footprint with a
+              hairline tone. The inner fill below sits 1.5px inset, revealing
+              this layer as a thin outline around the polygon. */}
+          <div
+            className={cn("absolute inset-0", EMPTY_HEX_BORDER)}
+            style={{ clipPath: CLIP }}
+          />
+          {/* Inner fill — actual hex background. transition-colors animates
+              the place-target / hover-over highlights. */}
+          <div
+            className={cn(
+              "absolute transition-colors",
+              "bg-muted/15",
+              isPlaceTarget && "bg-primary/15",
+              isOver && "bg-primary/30"
+            )}
+            style={{ inset: 1.5, clipPath: CLIP }}
+          />
+        </>
       )}
 
       {children}
