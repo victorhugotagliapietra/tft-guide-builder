@@ -1,4 +1,4 @@
-import type { TFTChampion, TFTItem, TFTTrait, TFTSetData } from "./types";
+import type { TFTChampion, TFTItem, TFTItemCategory, TFTTrait, TFTSetData, TraitBreakpoint } from "./types";
 import { championIconUrl, itemIconUrl, traitIconUrl, rerollCdnChampionUrl } from "./cdn";
 
 // ---------------------------------------------------------------------------
@@ -18,10 +18,18 @@ export type RawChampion = {
   tileIcon?: string;
 };
 
+export type RawTraitEffect = {
+  minUnits: number;
+  maxUnits?: number;
+  style: number;
+  variables?: Record<string, number>;
+};
+
 export type RawTrait = {
   apiName: string;
   name: string;
   icon: string;
+  effects?: RawTraitEffect[];
 };
 
 export type RawSet = {
@@ -42,6 +50,8 @@ export type RawItem = {
   incompatibleTraits?: string[];
   isEmblem?: boolean;
   unique?: boolean;
+  // Some CDragon versions expose a tags array; used for category hints when present.
+  tags?: string[];
 };
 
 export type RawTFTData = {
@@ -56,6 +66,54 @@ export type RawTFTData = {
 const CURRENT_SET = 17;
 
 // ---------------------------------------------------------------------------
+// Trait tier mapping
+// ---------------------------------------------------------------------------
+
+// CDragon encodes tier quality as a numeric `style` value on each effect.
+// Set 17 (and most recent sets) uses: 1=bronze, 3=silver, 5=gold, 7=prismatic.
+// Older sets sometimes use 1/2/3/4 — the positional fallback handles those.
+const STYLE_TO_TIER: Record<number, TraitBreakpoint["tier"]> = {
+  1: "bronze",
+  2: "silver",
+  3: "silver",
+  4: "gold",
+  5: "gold",
+  6: "prismatic",
+  7: "prismatic",
+  8: "prismatic",
+};
+
+const POSITIONAL_TIERS: TraitBreakpoint["tier"][] = [
+  "bronze",
+  "silver",
+  "gold",
+  "prismatic",
+];
+
+function styleToTier(style: number, fallbackIndex: number): TraitBreakpoint["tier"] {
+  return (
+    STYLE_TO_TIER[style] ??
+    POSITIONAL_TIERS[Math.min(fallbackIndex, POSITIONAL_TIERS.length - 1)]
+  );
+}
+
+function normalizeBreakpoints(effects: RawTraitEffect[]): TraitBreakpoint[] {
+  const sorted = [...effects].sort((a, b) => a.minUnits - b.minUnits);
+  return sorted.map((e, i) => {
+    const bp: TraitBreakpoint = {
+      minUnits: e.minUnits,
+      tier: styleToTier(e.style, i),
+    };
+    // Include maxUnits only when CDragon supplies a meaningful upper bound.
+    // Sentinel values (0 or ≥9999) indicate "no cap" and are omitted.
+    if (e.maxUnits !== undefined && e.maxUnits !== null && e.maxUnits > e.minUnits && e.maxUnits < 9999) {
+      bp.maxUnits = e.maxUnits;
+    }
+    return bp;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -66,17 +124,69 @@ function isUsableItem(item: RawItem): boolean {
     !api.includes("_placeholder") &&
     !api.includes("Tutorial") &&
     !api.includes("Debug") &&
-    !api.includes("Augment")
+    !api.includes("Augment") &&
+    !api.includes("_Tactician") &&
+    !api.includes("_Consumable")
   );
 }
 
-function classifyItem(item: RawItem): { isComponent: boolean; isEmblem: boolean } {
-  const isEmblem =
-    item.isEmblem === true ||
-    item.apiName.toLowerCase().includes("emblem") ||
-    (item.associatedTraits?.length ?? 0) > 0;
-  const isComponent = !isEmblem && (item.composition?.length ?? 0) === 0;
-  return { isComponent, isEmblem };
+/**
+ * Determine item category from CDragon fields.
+ *
+ * Priority order:
+ *   1. Emblem   — isEmblem flag OR associatedTraits present
+ *   2. Radiant  — "Radiant" in apiName or name
+ *   3. Artifact — "Ornn" or "Artifact" in apiName (Ornn / Artifact items)
+ *   4. Component — appears as an ingredient in another item's composition array
+ *   5. Normal   — everything else (assembled non-radiant non-artifact items)
+ *
+ * The `tags` array (present in some CDragon versions) is checked as a secondary
+ * signal for radiant/artifact detection.
+ */
+function categorizeItem(
+  item: RawItem,
+  componentApiNames: Set<string>
+): TFTItemCategory {
+  const api = item.apiName.toLowerCase();
+  const name = item.name.toLowerCase();
+  const tags = (item.tags ?? []).map((t) => t.toLowerCase());
+
+  // 1. Emblem
+  if (
+    item.isEmblem ||
+    (item.associatedTraits?.length ?? 0) > 0 ||
+    api.includes("emblem") ||
+    tags.includes("emblem")
+  ) {
+    return "emblem";
+  }
+
+  // 2. Radiant
+  if (
+    api.includes("radiant") ||
+    name.startsWith("radiant ") ||
+    tags.includes("radiant")
+  ) {
+    return "radiant";
+  }
+
+  // 3. Artifact (Ornn items + items explicitly tagged as artifacts)
+  if (
+    api.includes("ornn") ||
+    api.includes("artifact") ||
+    tags.includes("artifact") ||
+    tags.includes("ornn")
+  ) {
+    return "artifact";
+  }
+
+  // 4. Component — data-driven: only items actually used as ingredients elsewhere
+  if ((item.composition?.length ?? 0) === 0 && componentApiNames.has(item.apiName)) {
+    return "component";
+  }
+
+  // 5. Normal
+  return "normal";
 }
 
 function getBestIconPath(c: RawChampion): string {
@@ -141,6 +251,20 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     `[TFT] Set ${CURRENT_SET}: ${champions.length} champions loaded, ${skipped} skipped`
   );
 
+  // Build a set of trait apiNames that have a corresponding emblem item.
+  // Emblem items carry an `associatedTraits` array pointing to trait apiNames.
+  const emblemTraitNames = new Set<string>();
+  for (const item of raw.items ?? []) {
+    if (
+      item.isEmblem ||
+      item.apiName.toLowerCase().includes("emblem")
+    ) {
+      for (const traitApiName of item.associatedTraits ?? []) {
+        emblemTraitNames.add(traitApiName);
+      }
+    }
+  }
+
   const traits: TFTTrait[] = (set17?.traits ?? [])
     .filter((t) => t.icon && t.apiName && t.name)
     .map((t) => ({
@@ -148,22 +272,57 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
       name: t.name,
       iconPath: t.icon,
       iconUrl: traitIconUrl(t.icon),
+      breakpoints: normalizeBreakpoints(t.effects ?? []),
+      hasEmblem: emblemTraitNames.has(t.apiName),
     }));
 
-  const items: TFTItem[] = (raw.items ?? [])
-    .filter(isUsableItem)
-    .map((i) => {
-      const { isComponent, isEmblem } = classifyItem(i);
-      return {
-        apiName: i.apiName,
-        name: i.name,
-        iconPath: i.icon,
-        iconUrl: itemIconUrl(i.icon),
-        isComponent,
-        isEmblem,
-        composition: i.composition ?? [],
-      };
-    });
+  // Pass 1: collect every apiName that appears as a composition ingredient.
+  // This is the data-driven way to identify true components vs. special no-recipe items.
+  const componentApiNames = new Set<string>();
+  for (const item of raw.items ?? []) {
+    for (const ingredient of item.composition ?? []) {
+      componentApiNames.add(ingredient);
+    }
+  }
+
+  const usableRawItems = (raw.items ?? []).filter(isUsableItem);
+  let uncategorized = 0;
+
+  // Pass 2: normalize each item with a stable category derived from CDragon fields.
+  const items: TFTItem[] = usableRawItems.map((i) => {
+    const category = categorizeItem(i, componentApiNames);
+
+    if (category === "normal" && (i.composition?.length ?? 0) === 0 && !componentApiNames.has(i.apiName)) {
+      // Item has no composition and is not used as an ingredient — likely a special/
+      // consumable that slipped past the filter. Log it for visibility.
+      uncategorized++;
+      console.warn(`[TFT] Possibly uncategorized item: ${i.apiName} "${i.name}"`);
+    }
+
+    return {
+      apiName: i.apiName,
+      name: i.name,
+      iconPath: i.icon,
+      iconUrl: itemIconUrl(i.icon),
+      category,
+      composition: i.composition ?? [],
+      ...(category === "emblem" && (i.associatedTraits?.length ?? 0) > 0
+        ? { associatedTrait: i.associatedTraits![0] }
+        : {}),
+    };
+  });
+
+  if (uncategorized > 0) {
+    console.info(`[TFT] ${uncategorized} items fell through to "normal" with no recipe — review filter rules`);
+  }
+
+  console.info(
+    `[TFT] Items: ${items.length} total | ` +
+    Object.entries(
+      items.reduce((acc, i) => { acc[i.category] = (acc[i.category] ?? 0) + 1; return acc; },
+      {} as Record<string, number>)
+    ).map(([k, v]) => `${k}=${v}`).join(", ")
+  );
 
   return {
     setNumber: CURRENT_SET,

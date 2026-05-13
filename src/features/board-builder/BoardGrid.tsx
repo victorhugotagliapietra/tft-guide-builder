@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
-import { Star } from "lucide-react";
+import { Star, X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTChampion } from "@/features/tft-data/types";
@@ -32,16 +32,10 @@ const COST_HEX_BORDER: Record<number, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Champion image fallback
+// Champion image with 2-step fallback
 // ---------------------------------------------------------------------------
 
-function ChampionImg({
-  champion,
-  className,
-}: {
-  champion: TFTChampion;
-  className?: string;
-}) {
+function ChampionImg({ champion, className }: { champion: TFTChampion; className?: string }) {
   const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
     champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
   );
@@ -70,17 +64,10 @@ function ChampionImg({
 }
 
 // ---------------------------------------------------------------------------
-// Star control — hover-visible, click to set
+// Star control — hover-visible unless already set, click to assign
 // ---------------------------------------------------------------------------
 
-function StarControl({
-  starLevel,
-  onSet,
-}: {
-  starLevel: number;
-  onSet: (level: number) => void;
-}) {
-  // Note: parent has `group/hex` class so we can use group-hover/hex utilities
+function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: number) => void }) {
   return (
     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 flex gap-px pointer-events-none">
       {[1, 2, 3].map((level) => {
@@ -90,29 +77,27 @@ function StarControl({
           <button
             key={level}
             type="button"
-            // Stop pointer events from bubbling to the draggable hex
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              // Clicking an already-active star clears down to one less
               onSet(starLevel === level ? level - 1 : level);
             }}
             className={cn(
               "pointer-events-auto p-0.5 transition-opacity duration-150 leading-none",
-              isFilled
-                ? "opacity-100"
-                : "opacity-0 group-hover/hex:opacity-100",
-              isFilled && isGold && "text-yellow-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]",
-              isFilled && !isGold && "text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]",
+              isFilled ? "opacity-100" : "opacity-0 group-hover/hex:opacity-100",
+              isFilled && isGold && "text-yellow-400",
+              isFilled && !isGold && "text-slate-200",
               !isFilled && "text-white/40 hover:text-white"
             )}
             aria-label={`Set star level ${level}`}
           >
             <Star
               size={11}
-              strokeWidth={1.5}
+              strokeWidth={isFilled ? 2.5 : 1.5}
+              stroke={isFilled ? "rgba(0,0,0,0.75)" : "currentColor"}
               fill={isFilled ? "currentColor" : "none"}
+              style={isFilled ? { paintOrder: "stroke fill" } : undefined}
             />
           </button>
         );
@@ -122,7 +107,72 @@ function StarControl({
 }
 
 // ---------------------------------------------------------------------------
-// Draggable unit (the champion image inside an occupied hex)
+// Item icons row — shown below the hex, click to remove
+// ---------------------------------------------------------------------------
+
+function ItemIconImg({ iconUrl, name }: { iconUrl: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!iconUrl || failed) {
+    return <div className="w-full h-full bg-muted/50 rounded-sm" />;
+  }
+  return (
+    <img
+      src={iconUrl}
+      alt={name}
+      className="w-full h-full object-cover rounded-sm"
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function EditableItemIcons({
+  itemKeys,
+  onRemove,
+}: {
+  itemKeys: string[];
+  onRemove: (index: number) => void;
+}) {
+  const { items } = useTFTData();
+  const itemMap = new Map(items.map((i) => [i.apiName, i]));
+
+  return (
+    <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 flex gap-0.5 z-30 pointer-events-none">
+      {itemKeys.slice(0, 3).map((key, i) => {
+        const item = itemMap.get(key);
+        return (
+          <button
+            key={i}
+            type="button"
+            title={item?.name ?? key}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(i);
+            }}
+            className={cn(
+              "pointer-events-auto relative w-4 h-4 rounded-sm ring-1 ring-black/40",
+              "transition-all duration-100",
+              "hover:scale-125 hover:ring-destructive/80 hover:z-10",
+              "group/item"
+            )}
+            aria-label={`Remove ${item?.name ?? key}`}
+          >
+            <ItemIconImg iconUrl={item?.iconUrl ?? ""} name={item?.name ?? key} />
+            {/* X overlay on hover */}
+            <span className="absolute inset-0 hidden group-hover/item:flex items-center justify-center bg-black/60 rounded-sm">
+              <X className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Draggable unit
 // ---------------------------------------------------------------------------
 
 function DraggableUnit({
@@ -149,23 +199,17 @@ function DraggableUnit({
         isDragging && "opacity-30"
       )}
     >
-      {/* Cost-color border hex */}
       <div
         className={cn("absolute inset-0", COST_HEX_BORDER[champion.cost] ?? COST_HEX_BORDER[1])}
         style={{ clipPath: CLIP }}
       />
-      {/* Inset image hex */}
       <div className="absolute" style={{ inset: 2, clipPath: CLIP }}>
         <ChampionImg champion={champion} className="w-full h-full pointer-events-none" />
       </div>
-      {/* Selection ring */}
       {isSelected && (
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{
-            clipPath: CLIP,
-            boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.85)",
-          }}
+          style={{ clipPath: CLIP, boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.85)" }}
         />
       )}
     </div>
@@ -182,6 +226,8 @@ function DroppableHex({
   top,
   isEmpty,
   isPlaceTarget,
+  isDraggingItem,
+  hasUnit,
   children,
 }: {
   pos: number;
@@ -189,6 +235,8 @@ function DroppableHex({
   top: number;
   isEmpty: boolean;
   isPlaceTarget: boolean;
+  isDraggingItem: boolean;
+  hasUnit: boolean;
   children?: React.ReactNode;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hex:${pos}` });
@@ -213,6 +261,14 @@ function DroppableHex({
 
       {children}
 
+      {/* Drop ring on occupied hex when an item is being dragged over it */}
+      {hasUnit && isOver && isDraggingItem && (
+        <div
+          className="absolute inset-0 pointer-events-none z-20 ring-2 ring-primary/70"
+          style={{ clipPath: CLIP }}
+        />
+      )}
+
       {isEmpty && isOver && (
         <div className="absolute inset-0 flex items-center justify-center text-primary/70 text-xl pointer-events-none">
           +
@@ -231,7 +287,9 @@ type Props = {
   selectedPos: number | null;
   onHexClick: (pos: number) => void;
   onSetStarLevel: (pos: number, level: number) => void;
+  onRemoveItem: (pos: number, itemIndex: number) => void;
   isDraggingFromPanel: boolean;
+  isDraggingItem: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -243,7 +301,9 @@ export function BoardGrid({
   selectedPos,
   onHexClick,
   onSetStarLevel,
+  onRemoveItem,
   isDraggingFromPanel,
+  isDraggingItem,
 }: Props) {
   const { championMap } = useTFTData();
   const unitMap = new Map(units.map((u) => [u.position, u]));
@@ -271,6 +331,8 @@ export function BoardGrid({
               top={top}
               isEmpty={isEmpty}
               isPlaceTarget={isDraggingFromPanel}
+              isDraggingItem={isDraggingItem}
+              hasUnit={!!unit}
             >
               {champion && unit ? (
                 <>
@@ -291,6 +353,12 @@ export function BoardGrid({
                     starLevel={unit.starLevel}
                     onSet={(level) => onSetStarLevel(pos, level)}
                   />
+                  {(unit.items?.length ?? 0) > 0 && (
+                    <EditableItemIcons
+                      itemKeys={unit.items}
+                      onRemove={(itemIndex) => onRemoveItem(pos, itemIndex)}
+                    />
+                  )}
                 </>
               ) : null}
             </DroppableHex>

@@ -10,14 +10,28 @@ export type TFTChampion = {
   plannerId?: number;
 };
 
+export type TFTItemCategory =
+  | "normal"
+  | "emblem"
+  | "artifact"
+  | "radiant"
+  | "component";
+
 export type TFTItem = {
   apiName: string;
   name: string;
   iconPath: string;
   iconUrl: string;
-  isComponent: boolean;
-  isEmblem: boolean;
+  category: TFTItemCategory;
   composition: string[];
+  /** For emblem items: the trait apiName they grant. */
+  associatedTrait?: string;
+};
+
+export type TraitBreakpoint = {
+  minUnits: number;
+  maxUnits?: number;
+  tier: "bronze" | "silver" | "gold" | "prismatic";
 };
 
 export type TFTTrait = {
@@ -25,6 +39,8 @@ export type TFTTrait = {
   name: string;
   iconPath: string;
   iconUrl: string;
+  breakpoints: TraitBreakpoint[];
+  hasEmblem: boolean;
 };
 
 export type TFTSetData = {

@@ -1,17 +1,18 @@
 import { useState, useMemo } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import { Search } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
-import type { TFTItem } from "@/features/tft-data/types";
+import type { TFTItem, TFTItemCategory } from "@/features/tft-data/types";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Item category classification
+// Tab config
 // ---------------------------------------------------------------------------
 
-type ItemTab = "normal" | "emblem" | "artifact" | "radiant" | "component";
+const TABS: TFTItemCategory[] = ["normal", "emblem", "artifact", "radiant", "component"];
 
-const TAB_LABELS: Record<ItemTab, string> = {
+const TAB_LABELS: Record<TFTItemCategory, string> = {
   normal: "Normal",
   emblem: "Emblems",
   artifact: "Artifact",
@@ -19,34 +20,11 @@ const TAB_LABELS: Record<ItemTab, string> = {
   component: "Components",
 };
 
-const TABS: ItemTab[] = ["normal", "emblem", "artifact", "radiant", "component"];
-
-function categorize(item: TFTItem): ItemTab {
-  const api = item.apiName.toLowerCase();
-  const name = item.name.toLowerCase();
-  if (item.isComponent) return "component";
-  if (item.isEmblem) return "emblem";
-  if (api.includes("radiant") || name.includes("radiant")) return "radiant";
-  if (
-    api.includes("artifact") ||
-    api.includes("ornn") ||
-    name.includes("artifact")
-  )
-    return "artifact";
-  return "normal";
-}
-
 // ---------------------------------------------------------------------------
 // Item image with fallback
 // ---------------------------------------------------------------------------
 
-function ItemImg({
-  item,
-  className,
-}: {
-  item: TFTItem;
-  className?: string;
-}) {
+function ItemImg({ item, className }: { item: TFTItem; className?: string }) {
   const [failed, setFailed] = useState(false);
 
   if (!item.iconUrl || failed) {
@@ -72,19 +50,47 @@ function ItemImg({
 }
 
 // ---------------------------------------------------------------------------
-// Single item tile
+// Draggable item tile — drag ID: "item:<apiName>"
 // ---------------------------------------------------------------------------
 
-function ItemTile({ item }: { item: TFTItem }) {
+export function DraggableItemTile({ item }: { item: TFTItem }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `item:${item.apiName}`,
+  });
+
   return (
     <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ touchAction: "none" }}
       title={item.name}
-      className="flex flex-col items-center gap-0.5 w-[46px] group cursor-pointer"
+      className={cn(
+        "group flex flex-col items-center gap-0.5 w-[46px] cursor-grab active:cursor-grabbing select-none transition-all duration-100",
+        isDragging && "opacity-40"
+      )}
     >
       <div className="w-9 h-9 rounded-md overflow-hidden ring-1 ring-white/10 transition-all duration-150 group-hover:ring-white/30 group-hover:scale-110 group-hover:brightness-110">
         <ItemImg item={item} className="w-full h-full" />
       </div>
-      <span className="text-[8px] text-muted-foreground/70 text-center leading-tight truncate w-full text-center group-hover:text-muted-foreground">
+      <span className="text-[8px] text-muted-foreground/70 text-center leading-tight truncate w-full group-hover:text-muted-foreground">
+        {item.name.length > 8 ? item.name.slice(0, 7) + "…" : item.name}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Drag overlay preview (rendered inside DragOverlay in BoardStepCard)
+// ---------------------------------------------------------------------------
+
+export function ItemDragOverlay({ item }: { item: TFTItem }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 select-none pointer-events-none">
+      <div className="w-9 h-9 rounded-md overflow-hidden ring-2 ring-primary/60 shadow-2xl">
+        <ItemImg item={item} className="w-full h-full" />
+      </div>
+      <span className="text-[8px] text-center leading-tight text-foreground">
         {item.name.length > 8 ? item.name.slice(0, 7) + "…" : item.name}
       </span>
     </div>
@@ -97,11 +103,12 @@ function ItemTile({ item }: { item: TFTItem }) {
 
 export function ItemsPanel() {
   const { items } = useTFTData();
-  const [activeTab, setActiveTab] = useState<ItemTab>("normal");
+  const [activeTab, setActiveTab] = useState<TFTItemCategory>("normal");
   const [search, setSearch] = useState("");
 
-  const byTab = useMemo(() => {
-    const map: Record<ItemTab, TFTItem[]> = {
+  // Group by category — category is already on the model, no client-side logic needed
+  const byCategory = useMemo(() => {
+    const map: Record<TFTItemCategory, TFTItem[]> = {
       normal: [],
       emblem: [],
       artifact: [],
@@ -109,21 +116,21 @@ export function ItemsPanel() {
       component: [],
     };
     for (const item of items) {
-      map[categorize(item)].push(item);
+      map[item.category].push(item);
     }
     return map;
   }, [items]);
 
   const visible = useMemo(() => {
-    const list = byTab[activeTab];
+    const list = byCategory[activeTab];
     if (!search.trim()) return list;
     const q = search.trim().toLowerCase();
     return list.filter((i) => i.name.toLowerCase().includes(q));
-  }, [byTab, activeTab, search]);
+  }, [byCategory, activeTab, search]);
 
   return (
     <div className="flex flex-col gap-2 min-h-0">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-foreground/80 tracking-wide uppercase">
           Items
@@ -162,7 +169,6 @@ export function ItemsPanel() {
       <div
         className={cn(
           "flex flex-wrap gap-x-1.5 gap-y-2 overflow-y-auto pr-1 min-h-[80px]",
-          // Modern minimal scrollbar
           "[&::-webkit-scrollbar]:w-1",
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:rounded-full",
@@ -172,7 +178,7 @@ export function ItemsPanel() {
         style={{ maxHeight: "220px" }}
       >
         {visible.map((item) => (
-          <ItemTile key={item.apiName} item={item} />
+          <DraggableItemTile key={item.apiName} item={item} />
         ))}
         {visible.length === 0 && (
           <p className="text-xs text-muted-foreground/60 py-4 w-full text-center italic">

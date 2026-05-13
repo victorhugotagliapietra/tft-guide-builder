@@ -23,7 +23,8 @@ import {
 import { toast } from "sonner";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode } from "@/features/tft-data/planner-code";
-import type { TFTChampion } from "@/features/tft-data/types";
+import type { TFTChampion, TFTItem } from "@/features/tft-data/types";
+import { ItemDragOverlay } from "./ItemsPanel";
 import { BOARD_SIZE } from "./grid";
 import {
   STEP_TYPES,
@@ -148,7 +149,7 @@ function DraggableChampionTile({
     >
       <div
         className={cn(
-          "w-12 h-12 rounded-lg overflow-hidden transition-all duration-150",
+          "w-11 h-11 rounded-lg overflow-hidden transition-all duration-150",
           COST_RING[champion.cost] ?? COST_RING[1],
           "group-hover:scale-110 group-hover:brightness-110"
         )}
@@ -157,7 +158,7 @@ function DraggableChampionTile({
       </div>
       <span
         className={cn(
-          "text-[9px] leading-none text-center truncate w-14",
+          "text-[9px] leading-none text-center truncate w-12",
           COST_NAME_COLOR[champion.cost] ?? "text-muted-foreground",
           "group-hover:brightness-125"
         )}
@@ -175,7 +176,7 @@ function DraggableChampionTile({
 function DragOverlayContent({ champion }: { champion: TFTChampion }) {
   return (
     <div className="flex flex-col items-center gap-1 select-none pointer-events-none">
-      <div className={cn("w-12 h-12 rounded-lg overflow-hidden shadow-2xl", COST_RING[champion.cost] ?? COST_RING[1])}>
+      <div className={cn("w-11 h-11 rounded-lg overflow-hidden shadow-2xl", COST_RING[champion.cost] ?? COST_RING[1])}>
         <ChampionImg champion={champion} className="w-full h-full" />
       </div>
       <span className={cn("text-[9px] leading-none text-center", COST_NAME_COLOR[champion.cost] ?? "text-muted-foreground")}>
@@ -222,13 +223,14 @@ function sortChampions(champions: TFTChampion[]): TFTChampion[] {
 function ChampionPanel({
   onChampionClick,
   isRemoveTarget,
+  isOver,
 }: {
   onChampionClick: (apiName: string) => void;
   isRemoveTarget: boolean;
+  isOver: boolean;
 }) {
   const [search, setSearch] = useState("");
   const { champions } = useTFTData();
-  const { isOver, setNodeRef } = useDroppable({ id: "panel:trash" });
 
   const sorted = useMemo(() => sortChampions(champions), [champions]);
 
@@ -240,7 +242,6 @@ function ChampionPanel({
 
   return (
     <div
-      ref={setNodeRef}
       className={cn(
         "flex flex-col gap-2 min-h-0 rounded-xl transition-colors p-3 border border-white/5 bg-background/30",
         isRemoveTarget && "ring-2 ring-destructive/50 border-destructive/40",
@@ -268,7 +269,7 @@ function ChampionPanel({
       </div>
 
       {/* Grid — fits all champions without scroll */}
-      <div className="flex flex-wrap gap-x-2 gap-y-3">
+      <div className="flex flex-wrap gap-x-1.5 gap-y-2">
         {filtered.map((champion) => (
           <DraggableChampionTile
             key={champion.apiName}
@@ -315,7 +316,12 @@ export function BoardStepCard({
   const [description, setDescription] = useState(step.description);
   // Local input text for level so the user can clear the field while typing
   const [levelText, setLevelText] = useState(String(step.level));
-  const { championMap, setNumber } = useTFTData();
+  const { championMap, items: tftItems, setNumber } = useTFTData();
+
+  const itemMap = useMemo(
+    () => new Map(tftItems.map((i) => [i.apiName, i])),
+    [tftItems]
+  );
 
   const [selectedPos, setSelectedPos] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -345,7 +351,7 @@ export function BoardStepCard({
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    // Drag from board → champion panel = remove
+    // Drag board unit → champion panel = remove unit
     if (overId === "panel:trash" && activeId.startsWith("hex:")) {
       const fromPos = parseInt(activeId.replace("hex:", ""), 10);
       removeUnitAt(fromPos);
@@ -359,6 +365,22 @@ export function BoardStepCard({
       placeChampion(activeId.replace("champion:", ""), targetPos);
     } else if (activeId.startsWith("hex:")) {
       moveOrSwap(parseInt(activeId.replace("hex:", ""), 10), targetPos);
+    } else if (activeId.startsWith("item:")) {
+      // Drag item → occupied hex = add item to that champion (max 3)
+      const itemApiName = activeId.replace("item:", "");
+      const targetUnit = step.units.find((u) => u.position === targetPos);
+      if (!targetUnit) return; // can't place items on empty hexes
+      if ((targetUnit.items?.length ?? 0) >= 3) {
+        toast.error("Champions can hold at most 3 items");
+        return;
+      }
+      onUpdate(step.id, {
+        units: step.units.map((u) =>
+          u.position === targetPos
+            ? { ...u, items: [...(u.items ?? []), itemApiName] }
+            : u
+        ),
+      });
     }
   }
 
@@ -413,6 +435,16 @@ export function BoardStepCard({
     setSelectedPos(null);
   }
 
+  function handleRemoveItem(pos: number, itemIndex: number) {
+    onUpdate(step.id, {
+      units: step.units.map((u) =>
+        u.position === pos
+          ? { ...u, items: u.items.filter((_, i) => i !== itemIndex) }
+          : u
+      ),
+    });
+  }
+
   function handleSetStarLevel(pos: number, level: number) {
     const clamped = Math.max(0, Math.min(3, level));
     onUpdate(step.id, {
@@ -447,8 +479,16 @@ export function BoardStepCard({
     return null;
   }, [activeDragId, championMap, step.units]);
 
+  const overlayItem: TFTItem | null = useMemo(() => {
+    if (!activeDragId?.startsWith("item:")) return null;
+    return itemMap.get(activeDragId.replace("item:", "")) ?? null;
+  }, [activeDragId, itemMap]);
+
   const isDraggingFromPanel = !!(activeDragId?.startsWith("champion:"));
   const isDraggingFromBoard = !!(activeDragId?.startsWith("hex:"));
+  const isDraggingItem = !!(activeDragId?.startsWith("item:"));
+
+  const { isOver: isTrashOver, setNodeRef: setTrashRef } = useDroppable({ id: "panel:trash" });
 
   // -------------------------------------------------------------------------
   // Header summary
@@ -610,16 +650,22 @@ export function BoardStepCard({
                   selectedPos={selectedPos}
                   onHexClick={(pos) => setSelectedPos((p) => (p === pos ? null : pos))}
                   onSetStarLevel={handleSetStarLevel}
+                  onRemoveItem={handleRemoveItem}
                   isDraggingFromPanel={isDraggingFromPanel}
+                  isDraggingItem={isDraggingItem}
                 />
               </div>
             </div>
 
-            {/* Two-column: champions (3fr) + items (1fr) */}
-            <div className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-4 pt-1 border-t border-border/40">
+            {/* Two-column: champions (3fr) + items (1fr) — entire area is the removal drop zone */}
+            <div
+              ref={setTrashRef}
+              className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-4 pt-1 border-t border-border/40"
+            >
               <ChampionPanel
                 onChampionClick={placeChampionAtFirstEmpty}
                 isRemoveTarget={isDraggingFromBoard}
+                isOver={isTrashOver}
               />
               <div className="rounded-xl p-3 border border-white/5 bg-background/30">
                 <ItemsPanel />
@@ -628,6 +674,7 @@ export function BoardStepCard({
 
             <DragOverlay dropAnimation={null}>
               {overlayChampion && <DragOverlayContent champion={overlayChampion} />}
+              {overlayItem && <ItemDragOverlay item={overlayItem} />}
             </DragOverlay>
           </DndContext>
         </div>

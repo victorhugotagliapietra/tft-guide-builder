@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TFT_DATA_URL } from "./cdn";
 import { normalizeSetData, type RawTFTData } from "./normalize";
-import type { TFTSetData, TFTChampion } from "./types";
+import type { TFTSetData, TFTChampion, TFTTrait } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
 // Training dummies always available at cost 0 (excluded from normal filters)
@@ -54,12 +54,20 @@ export function useTFTData() {
     [champions]
   );
 
+  const traits: TFTTrait[] = query.data?.traits ?? [];
+
+  const traitMap = useMemo(
+    () => new Map(traits.map((t) => [t.apiName, t])),
+    [traits]
+  );
+
   return {
     ...query,
     champions,
     championMap,
     items: query.data?.items ?? [],
-    traits: query.data?.traits ?? [],
+    traits,
+    traitMap,
     setNumber: query.data?.setNumber ?? 17,
     setName: query.data?.setName ?? "",
     isUsingMockData: !query.data,
