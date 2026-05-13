@@ -66,16 +66,12 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
       style={{ touchAction: "none" }}
       title={item.name}
       className={cn(
-        "group flex flex-col items-center gap-0.5 w-[46px] cursor-grab active:cursor-grabbing select-none transition-all duration-100",
+        "w-11 h-11 rounded-md overflow-hidden ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none transition-all duration-150 relative",
+        "hover:ring-white/40 hover:scale-110 hover:brightness-110 hover:z-10",
         isDragging && "opacity-40"
       )}
     >
-      <div className="w-9 h-9 rounded-md overflow-hidden ring-1 ring-white/10 transition-all duration-150 group-hover:ring-white/30 group-hover:scale-110 group-hover:brightness-110">
-        <ItemImg item={item} className="w-full h-full" />
-      </div>
-      <span className="text-[8px] text-muted-foreground/70 text-center leading-tight truncate w-full group-hover:text-muted-foreground">
-        {item.name.length > 8 ? item.name.slice(0, 7) + "…" : item.name}
-      </span>
+      <ItemImg item={item} className="w-full h-full" />
     </div>
   );
 }
@@ -86,13 +82,8 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
 
 export function ItemDragOverlay({ item }: { item: TFTItem }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 select-none pointer-events-none">
-      <div className="w-9 h-9 rounded-md overflow-hidden ring-2 ring-primary/60 shadow-2xl">
-        <ItemImg item={item} className="w-full h-full" />
-      </div>
-      <span className="text-[8px] text-center leading-tight text-foreground">
-        {item.name.length > 8 ? item.name.slice(0, 7) + "…" : item.name}
-      </span>
+    <div className="w-11 h-11 rounded-md overflow-hidden ring-2 ring-primary/60 shadow-2xl select-none pointer-events-none">
+      <ItemImg item={item} className="w-full h-full" />
     </div>
   );
 }
@@ -165,17 +156,17 @@ export function ItemsPanel() {
         ))}
       </div>
 
-      {/* Items grid */}
+      {/* Items grid — icon-only for visual density */}
       <div
         className={cn(
-          "flex flex-wrap gap-x-1.5 gap-y-2 overflow-y-auto pr-1 min-h-[80px]",
+          "flex flex-wrap gap-1 overflow-y-auto pr-1 min-h-[80px]",
           "[&::-webkit-scrollbar]:w-1",
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:rounded-full",
           "[&::-webkit-scrollbar-thumb]:bg-white/10",
           "hover:[&::-webkit-scrollbar-thumb]:bg-white/20"
         )}
-        style={{ maxHeight: "220px" }}
+        style={{ maxHeight: "300px" }}
       >
         {visible.map((item) => (
           <DraggableItemTile key={item.apiName} item={item} />

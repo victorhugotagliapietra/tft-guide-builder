@@ -123,7 +123,8 @@ const UNIVERSAL_ITEM_RE = /^TFT_Item_/i;
 // Regex for current-set specific items
 const CURRENT_SET_ITEM_RE = new RegExp(`^TFT${CURRENT_SET}_Item_`, "i");
 
-// Substrings in apiName that always indicate non-equippable internal entries
+// Substrings in apiName that always indicate non-equippable internal entries.
+// Lowercased substrings — match against apiName.toLowerCase().
 const ITEM_API_BLOCKLIST = [
   "_placeholder",
   "tutorial",
@@ -141,6 +142,16 @@ const ITEM_API_BLOCKLIST = [
   "heroaugment",    // old TFT9 hero augment remnants
   "_icon_",         // UI icon assets
   "training_",      // training mode dummies
+  // Mode / UI / cosmetic blocklist (cleanup pass):
+  "modeicon",       // game-mode selector icons (MissFortune mode, etc.)
+  "_mode_",         // generic mode markers
+  "replicator",     // Replicator Mode icon
+  "conduitmode",    // Conduit Mode icon
+  "challengermode", // Challenger Mode icon
+  "_orb",           // orbs (loot orbs, Ornn orb mechanic)
+  "anvil",          // Ornn / item anvils
+  "crown",          // Tactician's / Strategist's Crown (cosmetic / special)
+  "_slot",          // internal RadiantSlot etc.
 ];
 
 /**
@@ -186,19 +197,27 @@ function isUsableItem(item: RawItem): boolean {
   return true;
 }
 
+// Modern artifact apiNames are prefixed TFT_Item_Artifact_*. Older Ornn items
+// (TFT6_Item_Ornn*, TFT_Item_Ornn*) are intentionally excluded.
+const ARTIFACT_RE = /^TFT_Item_Artifact_/i;
+// Modern radiant items are prefixed TFT_Item_Radiant*. Internal slot markers are
+// already filtered by the blocklist.
+const RADIANT_RE = /^TFT_Item_Radiant/i;
+
 /**
- * Categorize a valid TFT item.
+ * Categorize a valid TFT item, or return null to drop it entirely.
  *
- * Priority:
+ * Priority order:
  *   1. Emblem   — isEmblem flag OR has associatedTraits OR "emblem" in apiName
- *   2. Radiant  — "radiant" in apiName or name starts with "Radiant "
- *   3. Artifact — "ornn" or "artifact" in apiName
- *   4. Trait    — set-specific items (TFT{SET}_Item_*) that aren't already classified
- *   5. Normal   — universal items (TFT_Item_*), includes basic components + assembled items
+ *   2. Radiant  — modern TFT_Item_Radiant* naming
+ *   3. Artifact — modern TFT_Item_Artifact_* naming (drops legacy Ornn items)
+ *   4. Trait    — current-set apiName (TFT{SET}_Item_*) not classified above
+ *   5. Normal   — universal TFT_Item_* with composition.length >= 2
+ *                  (i.e., genuine completed items — drops components/orbs/consumables)
+ *   null        — uncategorizable; logged and excluded from the final list
  */
-function categorizeItem(item: RawItem): TFTItemCategory {
+function categorizeItem(item: RawItem): TFTItemCategory | null {
   const apiLower = item.apiName.toLowerCase();
-  const nameLower = item.name.toLowerCase();
 
   // 1. Emblem
   if (
@@ -209,23 +228,33 @@ function categorizeItem(item: RawItem): TFTItemCategory {
     return "emblem";
   }
 
-  // 2. Radiant
-  if (apiLower.includes("radiant") || nameLower.startsWith("radiant ")) {
+  // 2. Radiant — modern naming only
+  if (RADIANT_RE.test(item.apiName)) {
     return "radiant";
   }
 
-  // 3. Artifact (Ornn items)
-  if (apiLower.includes("ornn") || apiLower.includes("artifact")) {
+  // 3. Artifact — modern naming only (no legacy Ornn items)
+  if (ARTIFACT_RE.test(item.apiName)) {
     return "artifact";
   }
 
-  // 4. Trait — set-specific items that weren't caught above
+  // 4. Trait — current-set items not classified as anything above
   if (CURRENT_SET_ITEM_RE.test(item.apiName)) {
     return "trait";
   }
 
-  // 5. Normal (universal TFT_Item_* items — assembled items and basic components alike)
-  return "normal";
+  // 5. Normal — must be a universal completed item (recipe of 2 components).
+  // This rule naturally excludes basic components (no recipe), orbs/anvils
+  // (caught by blocklist), and any special items that survived earlier filters.
+  if (
+    UNIVERSAL_ITEM_RE.test(item.apiName) &&
+    (item.composition?.length ?? 0) >= 2
+  ) {
+    return "normal";
+  }
+
+  // Doesn't fit any tab → exclude from final list
+  return null;
 }
 
 function getBestIconPath(c: RawChampion): string {
@@ -319,11 +348,19 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
   const totalRaw = rawItems.length;
 
   const usableRawItems = rawItems.filter(isUsableItem);
-  console.info(`[TFT] Items: ${usableRawItems.length} valid / ${totalRaw} raw (${totalRaw - usableRawItems.length} filtered out)`);
+  const filteredOut = totalRaw - usableRawItems.length;
 
-  const items: TFTItem[] = usableRawItems.map((i) => {
+  const items: TFTItem[] = [];
+  let uncategorized = 0;
+
+  for (const i of usableRawItems) {
     const category = categorizeItem(i);
-    return {
+    if (category === null) {
+      uncategorized++;
+      console.debug(`[TFT] Uncategorized item (excluded): ${i.apiName} "${i.name}"`);
+      continue;
+    }
+    items.push({
       apiName: i.apiName,
       name: i.name,
       iconPath: i.icon,
@@ -333,12 +370,17 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
       ...(category === "emblem" && (i.associatedTraits?.length ?? 0) > 0
         ? { associatedTrait: i.associatedTraits![0] }
         : {}),
-    };
-  });
+    });
+  }
 
   const categoryCounts = items.reduce(
     (acc, i) => { acc[i.category] = (acc[i.category] ?? 0) + 1; return acc; },
     {} as Record<string, number>
+  );
+
+  console.info(
+    `[TFT] Items: ${items.length} kept / ${totalRaw} raw ` +
+    `(${filteredOut} filtered, ${uncategorized} uncategorized)`
   );
   console.info(
     `[TFT] Item categories: ` +

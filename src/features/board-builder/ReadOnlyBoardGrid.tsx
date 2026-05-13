@@ -16,7 +16,7 @@ const CELL_H = HEX_H - GAP;
 const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
 
 const CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2;
-const CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H;
+const CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H + 20;
 
 const COST_HEX_BORDER: Record<number, string> = {
   0: "bg-zinc-500",

@@ -20,7 +20,9 @@ const CELL_H = HEX_H - GAP;
 const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
 
 export const HEX_CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2;
-export const HEX_CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H;
+// Extra bottom space for item icons (absolute -bottom-3.5 = 14px) and stars (-bottom-0.5 = 2px)
+const BOTTOM_OVERFLOW = 20;
+export const HEX_CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H + BOTTOM_OVERFLOW;
 
 const COST_HEX_BORDER: Record<number, string> = {
   0: "bg-zinc-500",

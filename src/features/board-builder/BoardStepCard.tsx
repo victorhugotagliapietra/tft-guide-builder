@@ -7,7 +7,8 @@ import {
   useSensors,
   useDraggable,
   useDroppable,
-  closestCenter,
+  pointerWithin,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -58,6 +59,31 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+
+// ---------------------------------------------------------------------------
+// Drag zones — droppable IDs encode the zone type:
+//   "hex:<position>"  → board hex (drop target for champions & items, source for board units)
+//   "panel:trash"     → champion/items panel area (drop target to remove a board unit)
+//   "champion:<api>"  → draggable from champion pool (source only)
+//   "item:<api>"      → draggable from item pool (source only)
+//
+// pointerWithin (not closestCenter) is used so that:
+//   - dropping outside every zone yields `over === null` → triggers removal of
+//     board units (closestCenter never returns null, which broke removal)
+//   - large container droppables (panel:trash) never "win" over precise hexes
+// ---------------------------------------------------------------------------
+
+const dragCollisionDetection: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  if (hits.length === 0) return [];
+  // Hex always wins over the surrounding trash container — otherwise an
+  // occupied hex inside the trash zone could ambiguously resolve to trash.
+  const hex = hits.find((c) => String(c.id).startsWith("hex:"));
+  if (hex) return [hex];
+  const trash = hits.find((c) => String(c.id) === "panel:trash");
+  if (trash) return [trash];
+  return [];
+};
 
 // ---------------------------------------------------------------------------
 // Cost-tier styling (matches BoardGrid hex border colors)
@@ -355,63 +381,100 @@ export function BoardStepCard({
   // Drag handlers
   // -------------------------------------------------------------------------
 
+  // Parse a draggable/droppable ID into its zone + payload.
+  type ParsedId =
+    | { zone: "board"; pos: number }
+    | { zone: "champion-pool"; apiName: string }
+    | { zone: "item-pool"; apiName: string }
+    | { zone: "remove" }
+    | { zone: "unknown" };
+
+  function parseId(raw: string | null | undefined): ParsedId {
+    if (!raw) return { zone: "unknown" };
+    if (raw.startsWith("hex:")) {
+      return { zone: "board", pos: parseInt(raw.slice(4), 10) };
+    }
+    if (raw.startsWith("champion:")) {
+      return { zone: "champion-pool", apiName: raw.slice(9) };
+    }
+    if (raw.startsWith("item:")) {
+      return { zone: "item-pool", apiName: raw.slice(5) };
+    }
+    if (raw === "panel:trash") return { zone: "remove" };
+    return { zone: "unknown" };
+  }
+
   function handleDragStart({ active }: DragStartEvent) {
-    setActiveDragId(String(active.id));
+    const id = String(active.id);
+    console.debug("[TFT][drag] start", { activeId: id, source: parseId(id) });
+    setActiveDragId(id);
     setSelectedPos(null);
   }
 
   function handleDragEnd({ active, over }: DragEndEvent) {
+    const activeId = String(active.id);
+    const overId = over ? String(over.id) : null;
     setActiveDragId(null);
 
-    const activeId = String(active.id);
+    const source = parseId(activeId);
+    const destination = over ? parseId(overId) : { zone: "outside" as const };
 
-    // Dropped outside every droppable zone while dragging a board unit → remove it.
-    // This covers the "drag champion out of the board" gesture naturally.
-    if (!over && activeId.startsWith("hex:")) {
-      console.debug(`[TFT] Board unit dropped outside zones, removing pos ${activeId}`);
-      const fromPos = parseInt(activeId.replace("hex:", ""), 10);
-      removeUnitAt(fromPos);
+    console.debug("[TFT][drag] end", { activeId, overId, source, destination });
+
+    // ----- Source: board unit -----
+    if (source.zone === "board") {
+      // board → outside any droppable  ⇒ remove
+      if (!over) {
+        console.debug("[TFT][drag] board → outside ⇒ remove", source.pos);
+        removeUnitAt(source.pos);
+        return;
+      }
+      // board → remove zone (champion/items panel)  ⇒ remove
+      if (destination.zone === "remove") {
+        console.debug("[TFT][drag] board → remove zone ⇒ remove", source.pos);
+        removeUnitAt(source.pos);
+        return;
+      }
+      // board → board  ⇒ move or swap
+      if (destination.zone === "board") {
+        moveOrSwap(source.pos, destination.pos);
+        return;
+      }
+      // Any other destination is ignored — but we still treat unrecognized
+      // drops as a no-op rather than removing, to avoid surprising the user.
       return;
     }
 
-    if (!over) return;
-
-    const overId = String(over.id);
-
-    // Drag board unit → champion panel / trash zone = remove unit
-    if (overId === "panel:trash" && activeId.startsWith("hex:")) {
-      const fromPos = parseInt(activeId.replace("hex:", ""), 10);
-      removeUnitAt(fromPos);
+    // ----- Source: champion pool -----
+    if (source.zone === "champion-pool") {
+      if (destination.zone === "board") {
+        placeChampion(source.apiName, destination.pos);
+      }
       return;
     }
 
-    if (!overId.startsWith("hex:")) return;
-    const targetPos = parseInt(overId.replace("hex:", ""), 10);
-
-    if (activeId.startsWith("champion:")) {
-      placeChampion(activeId.replace("champion:", ""), targetPos);
-    } else if (activeId.startsWith("hex:")) {
-      moveOrSwap(parseInt(activeId.replace("hex:", ""), 10), targetPos);
-    } else if (activeId.startsWith("item:")) {
-      // Drag item → occupied hex = add item to that champion (max 3)
-      const itemApiName = activeId.replace("item:", "");
-      const targetUnit = step.units.find((u) => u.position === targetPos);
-      if (!targetUnit) return; // can't place items on empty hexes
+    // ----- Source: item pool -----
+    if (source.zone === "item-pool") {
+      if (destination.zone !== "board") return;
+      const targetUnit = step.units.find((u) => u.position === destination.pos);
+      if (!targetUnit) return; // empty hex — items need a champion
       if ((targetUnit.items?.length ?? 0) >= 3) {
         toast.error("Champions can hold at most 3 items");
         return;
       }
       onUpdate(step.id, {
         units: step.units.map((u) =>
-          u.position === targetPos
-            ? { ...u, items: [...(u.items ?? []), itemApiName] }
+          u.position === destination.pos
+            ? { ...u, items: [...(u.items ?? []), source.apiName] }
             : u
         ),
       });
+      return;
     }
   }
 
   function handleDragCancel() {
+    console.debug("[TFT][drag] cancel");
     setActiveDragId(null);
   }
 
@@ -650,7 +713,7 @@ export function BoardStepCard({
           {/* Board + panels */}
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={dragCollisionDetection}
             modifiers={[snapCenterToCursor]}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
