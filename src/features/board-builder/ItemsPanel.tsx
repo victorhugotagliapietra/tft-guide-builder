@@ -75,7 +75,7 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
       style={{ touchAction: "none" }}
       title={item.name}
       className={cn(
-        "w-11 h-11 rounded-md overflow-hidden ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none transition-all duration-150 relative",
+        "w-10 h-10 rounded-md overflow-hidden ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none transition-all duration-150 relative",
         "hover:ring-white/40 hover:scale-110 hover:brightness-110 hover:z-10",
         isDragging && "opacity-40"
       )}
@@ -91,7 +91,7 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
 
 export function ItemDragOverlay({ item }: { item: TFTItem }) {
   return (
-    <div className="w-11 h-11 rounded-md overflow-hidden ring-2 ring-primary/60 shadow-2xl select-none pointer-events-none">
+    <div className="w-10 h-10 rounded-md overflow-hidden ring-2 ring-primary/60 shadow-2xl select-none pointer-events-none">
       <ItemImg item={item} className="w-full h-full" />
     </div>
   );

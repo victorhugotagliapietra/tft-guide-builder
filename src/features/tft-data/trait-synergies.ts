@@ -23,25 +23,39 @@ const TIER_PRIORITY: Record<TraitBreakpoint["tier"], number> = {
 /**
  * Compute active trait synergies from a list of units on the board.
  *
- * Units with no matching champion in `championMap` are ignored.
- * Traits that have no breakpoints at all are excluded from the result.
+ * `champion.traits` stores trait display names (e.g. "Primordian"), not the
+ * trait apiName (e.g. "TFT17_Primordian"). We therefore look traits up by
+ * BOTH apiName and display-name to be tolerant of either format coming from
+ * future CDragon changes.
  *
- * The returned list is sorted:
- *   1. Active traits first, descending by tier priority, then by unit count.
- *   2. Inactive traits (unitCount < first breakpoint) last, by unit count desc.
+ * Units with no matching champion in `championMap` are ignored. Traits with
+ * no breakpoints are excluded.
+ *
+ * Sorted: active traits first (desc tier, desc unit count); inactive last.
  */
 export function computeActiveTraits(
   units: { championKey: string }[],
   championMap: Map<string, TFTChampion>,
   traitMap: Map<string, TFTTrait>
 ): ActiveTrait[] {
-  // Count units contributing to each trait
+  // Build a secondary lookup keyed by display name so we can resolve the
+  // tokens that champions carry on their `traits` array.
+  const byName = new Map<string, TFTTrait>();
+  for (const t of traitMap.values()) byName.set(t.name, t);
+
+  const resolveTrait = (token: string): TFTTrait | undefined =>
+    traitMap.get(token) ?? byName.get(token);
+
+  // Count units contributing to each trait (keyed by resolved apiName so
+  // different display-name aliases don't double-count)
   const counts = new Map<string, number>();
   for (const unit of units) {
     const champion = championMap.get(unit.championKey);
     if (!champion) continue;
-    for (const traitApiName of champion.traits) {
-      counts.set(traitApiName, (counts.get(traitApiName) ?? 0) + 1);
+    for (const traitToken of champion.traits) {
+      const trait = resolveTrait(traitToken);
+      if (!trait) continue;
+      counts.set(trait.apiName, (counts.get(trait.apiName) ?? 0) + 1);
     }
   }
 
@@ -49,7 +63,6 @@ export function computeActiveTraits(
 
   for (const [traitApiName, unitCount] of counts) {
     const trait = traitMap.get(traitApiName);
-    // Skip traits missing from the trait map or with no breakpoints
     if (!trait || trait.breakpoints.length === 0) continue;
 
     // Breakpoints are already sorted by minUnits in normalize.ts

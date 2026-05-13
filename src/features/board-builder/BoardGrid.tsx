@@ -11,9 +11,9 @@ import { cn } from "@/lib/utils";
 // Hex geometry
 // ---------------------------------------------------------------------------
 
-const HEX_W = 70;
-const HEX_H = 80;
-const ROW_PITCH = Math.round(HEX_H * 0.75); // 60px
+const HEX_W = 76;
+const HEX_H = 88;
+const ROW_PITCH = Math.round(HEX_H * 0.75); // 66px
 const GAP = 4;
 const CELL_W = HEX_W - GAP;
 const CELL_H = HEX_H - GAP;

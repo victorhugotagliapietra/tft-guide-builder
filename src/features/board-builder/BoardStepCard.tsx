@@ -35,6 +35,8 @@ import {
 } from "./types";
 import { BoardGrid } from "./BoardGrid";
 import { ItemsPanel } from "./ItemsPanel";
+import { TraitsPanel } from "./TraitsPanel";
+import { AugmentSlotsPanel } from "./AugmentSlotsPanel";
 import { RichTextEditor } from "./RichTextEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -352,8 +354,8 @@ function ChampionPanel({
         </div>
       </div>
 
-      {/* Grid — fits all champions without scroll */}
-      <div className="flex flex-wrap gap-x-1.5 gap-y-2">
+      {/* Grid — strict 14 columns, yields ~5 rows for the full Set 17 roster */}
+      <div className="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-x-1.5 gap-y-2 justify-items-center">
         {filtered.map((champion) => (
           <DraggableChampionTile
             key={champion.apiName}
@@ -362,7 +364,7 @@ function ChampionPanel({
           />
         ))}
         {filtered.length === 0 && (
-          <p className="text-xs text-muted-foreground/60 py-4 w-full text-center italic">
+          <p className="text-xs text-muted-foreground/60 py-4 [grid-column:1/-1] text-center italic">
             No champions found
           </p>
         )}
@@ -776,24 +778,32 @@ export function BoardStepCard({
                   Copy planner code
                 </Button>
               </div>
-              <div className="overflow-x-auto rounded-lg">
-                <BoardGrid
-                  units={step.units}
-                  selectedPos={selectedPos}
-                  onHexClick={(pos) => setSelectedPos((p) => (p === pos ? null : pos))}
-                  onSetStarLevel={handleSetStarLevel}
-                  onRemoveItem={handleRemoveItem}
-                  isDraggingFromPanel={isDraggingFromPanel}
-                  isDraggingItem={isDraggingItem}
-                />
+              {/* Board flanked by traits (left) and augment slots (right).
+                  Center board area scrolls horizontally if the viewport is
+                  too narrow to host the bumped hex geometry without overflow. */}
+              <div className="flex items-start gap-3">
+                <TraitsPanel units={step.units} />
+                <div className="flex-1 min-w-0 overflow-x-auto rounded-lg">
+                  <BoardGrid
+                    units={step.units}
+                    selectedPos={selectedPos}
+                    onHexClick={(pos) => setSelectedPos((p) => (p === pos ? null : pos))}
+                    onSetStarLevel={handleSetStarLevel}
+                    onRemoveItem={handleRemoveItem}
+                    isDraggingFromPanel={isDraggingFromPanel}
+                    isDraggingItem={isDraggingItem}
+                  />
+                </div>
+                <AugmentSlotsPanel />
               </div>
             </div>
 
-            {/* Two-column: champions (flex) + items (fixed 360px to fit a 7-icon
-                grid) — entire area is the removal drop zone */}
+            {/* Two-column: champions (flex) + items (fixed 380px to fit a 7-icon
+                grid at the new 10% smaller tile size with extra breathing room)
+                — entire area is the removal drop zone */}
             <div
               ref={setTrashRef}
-              className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 pt-1 border-t border-border/40"
+              className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 pt-1 border-t border-border/40"
             >
               <ChampionPanel
                 onChampionClick={placeChampionAtFirstEmpty}
