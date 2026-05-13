@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -6,10 +6,12 @@ import {
   useSensor,
   useSensors,
   useDraggable,
+  useDroppable,
   closestCenter,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { snapCenterToCursor } from "@dnd-kit/modifiers";
 import {
   ChevronDown,
   ChevronRight,
@@ -22,6 +24,7 @@ import { toast } from "sonner";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode } from "@/features/tft-data/planner-code";
 import type { TFTChampion } from "@/features/tft-data/types";
+import { BOARD_SIZE } from "./grid";
 import {
   STEP_TYPES,
   STEP_TYPE_LABELS,
@@ -30,10 +33,10 @@ import {
 } from "./types";
 import { BoardGrid } from "./BoardGrid";
 import { ItemsPanel } from "./ItemsPanel";
+import { RichTextEditor } from "./RichTextEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RichTextEditor } from "./RichTextEditor";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -56,7 +59,7 @@ import {
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Cost-tier ring / glow — Image 5 inspired style
+// Cost-tier styling (matches BoardGrid hex border colors)
 // ---------------------------------------------------------------------------
 
 const COST_RING: Record<number, string> = {
@@ -78,7 +81,7 @@ const COST_NAME_COLOR: Record<number, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Champion image — 2-step fallback
+// Champion image with 2-step fallback
 // ---------------------------------------------------------------------------
 
 function ChampionImg({
@@ -95,7 +98,7 @@ function ChampionImg({
   if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
     return (
       <div className={cn("flex items-center justify-center bg-muted/30 text-[8px] text-muted-foreground text-center leading-tight px-0.5", className)}>
-        {champion.name.slice(0, 7)}
+        {champion.name.slice(0, 8)}
       </div>
     );
   }
@@ -108,31 +111,26 @@ function ChampionImg({
       loading="lazy"
       draggable={false}
       onError={() => {
-        if (imgState === "primary" && champion.fallbackIconUrl) {
-          setImgState("fallback");
-        } else {
-          setImgState("failed");
-        }
+        if (imgState === "primary" && champion.fallbackIconUrl) setImgState("fallback");
+        else setImgState("failed");
       }}
     />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Draggable champion tile — Image 5 inspired design
-// dnd-kit id: "champion:<apiName>"
+// Draggable + clickable champion tile
 // ---------------------------------------------------------------------------
 
 function DraggableChampionTile({
   champion,
-  isOccupied,
+  onClick,
 }: {
   champion: TFTChampion;
-  isOccupied: boolean;
+  onClick: (apiName: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `champion:${champion.apiName}`,
-    disabled: isOccupied,
   });
 
   return (
@@ -141,24 +139,22 @@ function DraggableChampionTile({
       {...listeners}
       {...attributes}
       style={{ touchAction: "none" }}
-      title={`${champion.name}${isOccupied ? " (on board)" : ""}`}
+      title={champion.name}
+      onClick={() => onClick(champion.apiName)}
       className={cn(
-        "group flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing select-none transition-all duration-100",
-        isOccupied && "opacity-35 cursor-default pointer-events-none",
+        "group flex flex-col items-center gap-1 cursor-pointer select-none transition-all duration-100",
         isDragging && "opacity-40"
       )}
     >
-      {/* Portrait with cost ring */}
       <div
         className={cn(
           "w-12 h-12 rounded-lg overflow-hidden transition-all duration-150",
           COST_RING[champion.cost] ?? COST_RING[1],
-          !isOccupied && "group-hover:scale-110 group-hover:brightness-110"
+          "group-hover:scale-110 group-hover:brightness-110"
         )}
       >
         <ChampionImg champion={champion} className="w-full h-full" />
       </div>
-      {/* Name */}
       <span
         className={cn(
           "text-[9px] leading-none text-center truncate w-14",
@@ -173,26 +169,16 @@ function DraggableChampionTile({
 }
 
 // ---------------------------------------------------------------------------
-// Drag overlay champion preview
+// Drag overlay
 // ---------------------------------------------------------------------------
 
 function DragOverlayContent({ champion }: { champion: TFTChampion }) {
   return (
-    <div className="flex flex-col items-center gap-1 select-none pointer-events-none rotate-2">
-      <div
-        className={cn(
-          "w-12 h-12 rounded-lg overflow-hidden shadow-2xl",
-          COST_RING[champion.cost] ?? COST_RING[1]
-        )}
-      >
+    <div className="flex flex-col items-center gap-1 select-none pointer-events-none">
+      <div className={cn("w-12 h-12 rounded-lg overflow-hidden shadow-2xl", COST_RING[champion.cost] ?? COST_RING[1])}>
         <ChampionImg champion={champion} className="w-full h-full" />
       </div>
-      <span
-        className={cn(
-          "text-[9px] leading-none text-center",
-          COST_NAME_COLOR[champion.cost] ?? "text-muted-foreground"
-        )}
-      >
+      <span className={cn("text-[9px] leading-none text-center", COST_NAME_COLOR[champion.cost] ?? "text-muted-foreground")}>
         {champion.name}
       </span>
     </div>
@@ -200,13 +186,26 @@ function DragOverlayContent({ champion }: { champion: TFTChampion }) {
 }
 
 // ---------------------------------------------------------------------------
-// Champion sort — by cost asc, special units (non-Set17) always last
+// Sort: cost asc, then name; specials always at the end
 // ---------------------------------------------------------------------------
 
-function sortChampions(champions: TFTChampion[]): TFTChampion[] {
-  const isSpecial = (c: TFTChampion) =>
-    !c.apiName.startsWith("TFT17_") || c.cost === 0;
+const SPECIAL_NAMES = new Set([
+  "Golem",
+  "Training Dummy",
+  "Practice Dummy",
+  "Rift Scuttler",
+  "Mini Black Ball",
+]);
 
+function isSpecial(c: TFTChampion): boolean {
+  return (
+    !c.apiName.startsWith("TFT17_") ||
+    c.cost === 0 ||
+    SPECIAL_NAMES.has(c.name)
+  );
+}
+
+function sortChampions(champions: TFTChampion[]): TFTChampion[] {
   return [...champions].sort((a, b) => {
     const aS = isSpecial(a);
     const bS = isSpecial(b);
@@ -217,12 +216,19 @@ function sortChampions(champions: TFTChampion[]): TFTChampion[] {
 }
 
 // ---------------------------------------------------------------------------
-// Champion picker panel — search only, no cost filters
+// Champion panel — droppable target for "remove via drag"
 // ---------------------------------------------------------------------------
 
-function ChampionPanel({ occupiedKeys }: { occupiedKeys: string[] }) {
+function ChampionPanel({
+  onChampionClick,
+  isRemoveTarget,
+}: {
+  onChampionClick: (apiName: string) => void;
+  isRemoveTarget: boolean;
+}) {
   const [search, setSearch] = useState("");
   const { champions } = useTFTData();
+  const { isOver, setNodeRef } = useDroppable({ id: "panel:trash" });
 
   const sorted = useMemo(() => sortChampions(champions), [champions]);
 
@@ -233,11 +239,22 @@ function ChampionPanel({ occupiedKeys }: { occupiedKeys: string[] }) {
   }, [sorted, search]);
 
   return (
-    <div className="flex flex-col gap-2 min-h-0">
-      {/* Header + search */}
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex flex-col gap-2 min-h-0 rounded-xl transition-colors p-3 border border-white/5 bg-background/30",
+        isRemoveTarget && "ring-2 ring-destructive/50 border-destructive/40",
+        isOver && isRemoveTarget && "bg-destructive/15"
+      )}
+    >
+      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-foreground/80 tracking-wide uppercase">
-          Champions
+          {isRemoveTarget ? (
+            <span className="text-destructive">Drop to remove</span>
+          ) : (
+            "Champions"
+          )}
         </span>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
@@ -250,13 +267,13 @@ function ChampionPanel({ occupiedKeys }: { occupiedKeys: string[] }) {
         </div>
       </div>
 
-      {/* Champion grid — no scroll, grows with content */}
+      {/* Grid — fits all champions without scroll */}
       <div className="flex flex-wrap gap-x-2 gap-y-3">
         {filtered.map((champion) => (
           <DraggableChampionTile
             key={champion.apiName}
             champion={champion}
-            isOccupied={occupiedKeys.includes(champion.apiName)}
+            onClick={onChampionClick}
           />
         ))}
         {filtered.length === 0 && (
@@ -296,10 +313,17 @@ export function BoardStepCard({
 }: Props) {
   const [title, setTitle] = useState(step.title);
   const [description, setDescription] = useState(step.description);
+  // Local input text for level so the user can clear the field while typing
+  const [levelText, setLevelText] = useState(String(step.level));
   const { championMap, setNumber } = useTFTData();
 
   const [selectedPos, setSelectedPos] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  // Sync external step.level changes back into the input
+  useEffect(() => {
+    setLevelText(String(step.level));
+  }, [step.level]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -320,8 +344,15 @@ export function BoardStepCard({
 
     const activeId = String(active.id);
     const overId = String(over.id);
-    if (!overId.startsWith("hex:")) return;
 
+    // Drag from board → champion panel = remove
+    if (overId === "panel:trash" && activeId.startsWith("hex:")) {
+      const fromPos = parseInt(activeId.replace("hex:", ""), 10);
+      removeUnitAt(fromPos);
+      return;
+    }
+
+    if (!overId.startsWith("hex:")) return;
     const targetPos = parseInt(overId.replace("hex:", ""), 10);
 
     if (activeId.startsWith("champion:")) {
@@ -341,21 +372,27 @@ export function BoardStepCard({
 
   function placeChampion(apiName: string, targetPos: number) {
     if (step.units.some((u) => u.position === targetPos)) return;
-    if (step.units.some((u) => u.championKey === apiName)) {
-      const champ = championMap.get(apiName);
-      toast.error(`${champ?.name ?? apiName} is already on the board`);
-      return;
-    }
     const newUnit: BoardUnit = {
       id: crypto.randomUUID(),
       championKey: apiName,
       position: targetPos,
       items: [],
-      starLevel: 1,
+      starLevel: 0,
       isCarry: false,
       isItemHolder: false,
     };
     onUpdate(step.id, { units: [...step.units, newUnit] });
+  }
+
+  function placeChampionAtFirstEmpty(apiName: string) {
+    const occupied = new Set(step.units.map((u) => u.position));
+    for (let pos = 0; pos < BOARD_SIZE; pos++) {
+      if (!occupied.has(pos)) {
+        placeChampion(apiName, pos);
+        return;
+      }
+    }
+    toast.error("Board is full");
   }
 
   function moveOrSwap(fromPos: number, targetPos: number) {
@@ -371,9 +408,18 @@ export function BoardStepCard({
     setSelectedPos(null);
   }
 
-  function handleRemoveUnit(pos: number) {
+  function removeUnitAt(pos: number) {
     onUpdate(step.id, { units: step.units.filter((u) => u.position !== pos) });
     setSelectedPos(null);
+  }
+
+  function handleSetStarLevel(pos: number, level: number) {
+    const clamped = Math.max(0, Math.min(3, level));
+    onUpdate(step.id, {
+      units: step.units.map((u) =>
+        u.position === pos ? { ...u, starLevel: clamped } : u
+      ),
+    });
   }
 
   function handleCopyPlannerCode() {
@@ -386,7 +432,7 @@ export function BoardStepCard({
   }
 
   // -------------------------------------------------------------------------
-  // Overlay champion
+  // Overlay champion (for DragOverlay preview)
   // -------------------------------------------------------------------------
 
   const overlayChampion: TFTChampion | null = useMemo(() => {
@@ -402,6 +448,7 @@ export function BoardStepCard({
   }, [activeDragId, championMap, step.units]);
 
   const isDraggingFromPanel = !!(activeDragId?.startsWith("champion:"));
+  const isDraggingFromBoard = !!(activeDragId?.startsWith("hex:"));
 
   // -------------------------------------------------------------------------
   // Header summary
@@ -415,7 +462,7 @@ export function BoardStepCard({
 
   return (
     <div className="border border-border/60 rounded-xl overflow-hidden bg-card/50 backdrop-blur-sm">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div
         className={cn(
           "flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none hover:bg-muted/20 transition-colors",
@@ -426,7 +473,6 @@ export function BoardStepCard({
         <span className="shrink-0 text-muted-foreground/60">
           {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </span>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{step.title}</span>
@@ -442,37 +488,20 @@ export function BoardStepCard({
             </p>
           )}
         </div>
-
-        {/* Action buttons — stop propagation so they don't toggle expand */}
         <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground/60 hover:text-foreground"
-            onClick={() => onDuplicate(step.id)}
-            title="Duplicate step"
-          >
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground/60 hover:text-foreground" onClick={() => onDuplicate(step.id)} title="Duplicate step">
             <Copy className="h-3.5 w-3.5" />
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-destructive/60 hover:text-destructive"
-                title="Delete step"
-              >
+              <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive/60 hover:text-destructive" title="Delete step">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete "{step.title}"?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This board step will be removed permanently after saving.
-                </AlertDialogDescription>
+                <AlertDialogDescription>This board step will be removed permanently after saving.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -483,7 +512,7 @@ export function BoardStepCard({
         </div>
       </div>
 
-      {/* ── Expanded editor ─────────────────────────────────────────────────── */}
+      {/* Expanded editor */}
       {isExpanded && (
         <div className="p-4 space-y-4">
           {/* Metadata */}
@@ -505,10 +534,20 @@ export function BoardStepCard({
                 min={1}
                 max={10}
                 inputMode="numeric"
-                value={step.level}
+                value={levelText}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
+                  const text = e.target.value;
+                  setLevelText(text);
+                  if (text === "") return; // allow empty while editing
+                  const val = parseInt(text, 10);
                   if (!isNaN(val) && val >= 1 && val <= 10) onUpdate(step.id, { level: val });
+                }}
+                onBlur={() => {
+                  // Snap back to the last valid level if user left it empty/invalid
+                  const val = parseInt(levelText, 10);
+                  if (isNaN(val) || val < 1 || val > 10) {
+                    setLevelText(String(step.level));
+                  }
                 }}
                 className="h-8 text-sm bg-background/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
@@ -541,20 +580,18 @@ export function BoardStepCard({
             />
           </div>
 
-          {/* Board + panels in DnD context */}
+          {/* Board + panels */}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            modifiers={[snapCenterToCursor]}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
           >
-            {/* Board */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">
-                  Board <span className="text-muted-foreground/50">({unitCount}/28)</span>
-                </Label>
+                <Label className="text-xs text-muted-foreground">Board</Label>
                 <Button
                   type="button"
                   variant="ghost"
@@ -572,26 +609,23 @@ export function BoardStepCard({
                   units={step.units}
                   selectedPos={selectedPos}
                   onHexClick={(pos) => setSelectedPos((p) => (p === pos ? null : pos))}
-                  onRemove={handleRemoveUnit}
-                  onCancelSelection={() => setSelectedPos(null)}
+                  onSetStarLevel={handleSetStarLevel}
                   isDraggingFromPanel={isDraggingFromPanel}
                 />
               </div>
             </div>
 
-            {/* Two-column panel: Champions | Items */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1 border-t border-border/40">
-              <div className="bg-background/30 rounded-xl p-3 border border-white/5">
-                <ChampionPanel
-                  occupiedKeys={step.units.map((u) => u.championKey)}
-                />
-              </div>
-              <div className="bg-background/30 rounded-xl p-3 border border-white/5">
+            {/* Two-column: champions (3fr) + items (1fr) */}
+            <div className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-4 pt-1 border-t border-border/40">
+              <ChampionPanel
+                onChampionClick={placeChampionAtFirstEmpty}
+                isRemoveTarget={isDraggingFromBoard}
+              />
+              <div className="rounded-xl p-3 border border-white/5 bg-background/30">
                 <ItemsPanel />
               </div>
             </div>
 
-            {/* Drag overlay */}
             <DragOverlay dropAnimation={null}>
               {overlayChampion && <DragOverlayContent champion={overlayChampion} />}
             </DragOverlay>

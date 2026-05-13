@@ -29,7 +29,8 @@ export const boardUnitSchema = z.object({
   championKey: z.string(),
   position: z.number().int().min(0).max(27),
   items: z.array(z.string()).max(3).default([]),
-  starLevel: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
+  // 0 = no stars (hidden until hover), 1–3 = stars visible
+  starLevel: z.number().int().min(0).max(3).default(0),
   isCarry: z.boolean().default(false),
   isItemHolder: z.boolean().default(false),
 });

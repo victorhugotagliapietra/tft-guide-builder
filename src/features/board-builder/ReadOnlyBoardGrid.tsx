@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Star } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTChampion } from "@/features/tft-data/types";
@@ -136,10 +137,23 @@ export function ReadOnlyBoardGrid({ units }: Props) {
                     <div className="absolute" style={{ inset: 2, clipPath: CLIP }}>
                       <ChampionImg champion={champion} className="w-full h-full" />
                     </div>
-                    {/* Star */}
-                    <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-white drop-shadow z-10 px-1.5 rounded bg-black/55 leading-tight">
-                      {unit.starLevel}★
-                    </span>
+                    {/* Stars: 0 hidden, 1-2 silver, 3 gold */}
+                    {unit.starLevel > 0 && (
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 flex gap-px pointer-events-none">
+                        {Array.from({ length: unit.starLevel }).map((_, i) => (
+                          <Star
+                            key={i}
+                            size={11}
+                            strokeWidth={1.5}
+                            fill="currentColor"
+                            className={cn(
+                              "drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]",
+                              unit.starLevel === 3 ? "text-yellow-400" : "text-slate-200"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    )}
                     {/* Items below the hex */}
                     {(unit.items?.length ?? 0) > 0 && (
                       <ItemIcons itemKeys={unit.items} />

@@ -10,12 +10,12 @@ export const newGuideSchema = z.object({
 
 export const guideFormSchema = z.object({
   title: z.string().min(1, "Title is required").max(120),
-  description: z.string().max(1000).default(""),
+  description: z.string().max(5000).default(""),
   tft_set: z.string().max(20).default(""),
   patch: z.string().max(20).default(""),
   playstyle: z.string().max(60).default(""),
   difficulty: z.enum(DIFFICULTIES).default("medium"),
-  final_comp_notes: z.string().max(5000).default(""),
+  final_comp_notes: z.string().max(10000).default(""),
   is_public: z.boolean().default(false),
 });
 

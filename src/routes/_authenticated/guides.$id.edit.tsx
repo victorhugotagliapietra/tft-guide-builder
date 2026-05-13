@@ -13,8 +13,8 @@ import { useBoardSteps } from "@/features/board-builder/use-board-steps";
 import { BoardStepList } from "@/features/board-builder/BoardStepList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { RichTextEditor } from "@/features/board-builder/RichTextEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -247,9 +247,12 @@ function EditGuide() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} placeholder="Short summary of the comp..." {...field} />
-                    </FormControl>
+                    <RichTextEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      placeholder="Short summary of the comp..."
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
@@ -267,13 +270,12 @@ function EditGuide() {
                 name="final_comp_notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormControl>
-                      <Textarea
-                        rows={6}
-                        placeholder="How the comp wins, item priority, positioning notes..."
-                        {...field}
-                      />
-                    </FormControl>
+                    <RichTextEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      placeholder="How the comp wins, item priority, positioning notes…"
+                    />
                     <FormMessage />
                   </FormItem>
                 )}

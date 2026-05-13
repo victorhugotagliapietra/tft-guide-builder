@@ -285,7 +285,10 @@ function PublicGuide() {
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">{guide.title}</h1>
           {guide.description && (
-            <p className="text-muted-foreground leading-relaxed">{guide.description}</p>
+            <RichTextContent
+              html={guide.description}
+              className="text-muted-foreground leading-relaxed"
+            />
           )}
         </header>
 
@@ -295,9 +298,12 @@ function PublicGuide() {
             <h2 id="notes-heading" className="text-lg font-semibold">
               Final comp notes
             </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap rounded-lg border border-border bg-muted/20 px-4 py-3">
-              {guide.final_comp_notes}
-            </p>
+            <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+              <RichTextContent
+                html={guide.final_comp_notes}
+                className="text-muted-foreground leading-relaxed"
+              />
+            </div>
           </section>
         )}
 
