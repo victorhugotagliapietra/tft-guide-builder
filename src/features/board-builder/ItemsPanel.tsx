@@ -156,23 +156,23 @@ export function ItemsPanel() {
         ))}
       </div>
 
-      {/* Items grid — icon-only for visual density */}
+      {/* Items grid — strict 7 columns, icon-only for max density */}
       <div
         className={cn(
-          "flex flex-wrap gap-1 overflow-y-auto pr-1 min-h-[80px]",
-          "[&::-webkit-scrollbar]:w-1",
+          "grid grid-cols-7 gap-1 overflow-y-auto pr-1 min-h-[80px] justify-items-center",
+          "[&::-webkit-scrollbar]:w-1.5",
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:rounded-full",
           "[&::-webkit-scrollbar-thumb]:bg-white/10",
-          "hover:[&::-webkit-scrollbar-thumb]:bg-white/20"
+          "hover:[&::-webkit-scrollbar-thumb]:bg-white/25"
         )}
-        style={{ maxHeight: "300px" }}
+        style={{ maxHeight: "340px" }}
       >
         {visible.map((item) => (
           <DraggableItemTile key={item.apiName} item={item} />
         ))}
         {visible.length === 0 && (
-          <p className="text-xs text-muted-foreground/60 py-4 w-full text-center italic">
+          <p className="text-xs text-muted-foreground/60 py-4 col-span-7 text-center italic">
             No items found
           </p>
         )}

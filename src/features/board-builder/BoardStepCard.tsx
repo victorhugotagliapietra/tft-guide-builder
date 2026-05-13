@@ -747,10 +747,11 @@ export function BoardStepCard({
               </div>
             </div>
 
-            {/* Two-column: champions (3fr) + items (1fr) — entire area is the removal drop zone */}
+            {/* Two-column: champions (flex) + items (fixed 360px to fit a 7-icon
+                grid) — entire area is the removal drop zone */}
             <div
               ref={setTrashRef}
-              className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-4 pt-1 border-t border-border/40"
+              className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 pt-1 border-t border-border/40"
             >
               <ChampionPanel
                 onChampionClick={placeChampionAtFirstEmpty}

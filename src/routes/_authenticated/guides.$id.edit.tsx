@@ -152,7 +152,7 @@ function EditGuide() {
   const isPublic = form.watch("is_public");
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 space-y-6">
+    <div className="mx-auto max-w-[90rem] px-4 py-10 space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Edit guide</h1>
