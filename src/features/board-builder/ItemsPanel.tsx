@@ -10,14 +10,14 @@ import { cn } from "@/lib/utils";
 // Tab config
 // ---------------------------------------------------------------------------
 
-const TABS: TFTItemCategory[] = ["normal", "emblem", "artifact", "radiant", "component"];
+const TABS: TFTItemCategory[] = ["normal", "emblem", "artifact", "radiant", "trait"];
 
 const TAB_LABELS: Record<TFTItemCategory, string> = {
   normal: "Normal",
   emblem: "Emblems",
   artifact: "Artifact",
   radiant: "Radiant",
-  component: "Components",
+  trait: "Traits",
 };
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ export function ItemsPanel() {
       emblem: [],
       artifact: [],
       radiant: [],
-      component: [],
+      trait: [],
     };
     for (const item of items) {
       map[item.category].push(item);

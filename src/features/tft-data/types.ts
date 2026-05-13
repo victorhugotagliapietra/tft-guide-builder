@@ -15,7 +15,7 @@ export type TFTItemCategory =
   | "emblem"
   | "artifact"
   | "radiant"
-  | "component";
+  | "trait";
 
 export type TFTItem = {
   apiName: string;

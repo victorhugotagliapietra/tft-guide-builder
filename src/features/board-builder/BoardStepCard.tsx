@@ -92,11 +92,22 @@ function ChampionImg({
   champion: TFTChampion;
   className?: string;
 }) {
-  const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
-    champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
-  );
+  const [primaryFailed, setPrimaryFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
 
-  if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
+  // Reset failure flags when URLs change — fixes stale state when mock data is
+  // replaced by real CDragon data after initial mount.
+  useEffect(() => {
+    setPrimaryFailed(false);
+    setFallbackFailed(false);
+  }, [champion.iconUrl, champion.fallbackIconUrl]);
+
+  const src =
+    !primaryFailed && champion.iconUrl ? champion.iconUrl
+    : !fallbackFailed && champion.fallbackIconUrl ? champion.fallbackIconUrl
+    : null;
+
+  if (!src) {
     return (
       <div className={cn("flex items-center justify-center bg-muted/30 text-[8px] text-muted-foreground text-center leading-tight px-0.5", className)}>
         {champion.name.slice(0, 8)}
@@ -106,14 +117,19 @@ function ChampionImg({
 
   return (
     <img
-      src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
+      src={src}
       alt={champion.name}
       className={cn("object-cover", className)}
-      loading="lazy"
+      loading="eager"
       draggable={false}
       onError={() => {
-        if (imgState === "primary" && champion.fallbackIconUrl) setImgState("fallback");
-        else setImgState("failed");
+        if (!primaryFailed && src === champion.iconUrl) {
+          console.debug(`[TFT] Primary icon failed for ${champion.name}, trying fallback`);
+          setPrimaryFailed(true);
+        } else {
+          console.debug(`[TFT] All icons failed for ${champion.name}`);
+          setFallbackFailed(true);
+        }
       }}
     />
   );
@@ -346,12 +362,23 @@ export function BoardStepCard({
 
   function handleDragEnd({ active, over }: DragEndEvent) {
     setActiveDragId(null);
-    if (!over) return;
 
     const activeId = String(active.id);
+
+    // Dropped outside every droppable zone while dragging a board unit → remove it.
+    // This covers the "drag champion out of the board" gesture naturally.
+    if (!over && activeId.startsWith("hex:")) {
+      console.debug(`[TFT] Board unit dropped outside zones, removing pos ${activeId}`);
+      const fromPos = parseInt(activeId.replace("hex:", ""), 10);
+      removeUnitAt(fromPos);
+      return;
+    }
+
+    if (!over) return;
+
     const overId = String(over.id);
 
-    // Drag board unit → champion panel = remove unit
+    // Drag board unit → champion panel / trash zone = remove unit
     if (overId === "panel:trash" && activeId.startsWith("hex:")) {
       const fromPos = parseInt(activeId.replace("hex:", ""), 10);
       removeUnitAt(fromPos);

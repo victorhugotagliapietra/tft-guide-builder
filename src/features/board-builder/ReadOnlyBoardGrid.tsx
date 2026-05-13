@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Star } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
@@ -34,11 +34,20 @@ function ChampionImg({
   champion: TFTChampion;
   className?: string;
 }) {
-  const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
-    champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
-  );
+  const [primaryFailed, setPrimaryFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
 
-  if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
+  useEffect(() => {
+    setPrimaryFailed(false);
+    setFallbackFailed(false);
+  }, [champion.iconUrl, champion.fallbackIconUrl]);
+
+  const src =
+    !primaryFailed && champion.iconUrl ? champion.iconUrl
+    : !fallbackFailed && champion.fallbackIconUrl ? champion.fallbackIconUrl
+    : null;
+
+  if (!src) {
     return (
       <div
         className={cn(
@@ -53,15 +62,15 @@ function ChampionImg({
 
   return (
     <img
-      src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
+      src={src}
       alt={champion.name}
       className={cn("object-cover", className)}
       loading="lazy"
       onError={() => {
-        if (imgState === "primary" && champion.fallbackIconUrl) {
-          setImgState("fallback");
+        if (!primaryFailed && src === champion.iconUrl) {
+          setPrimaryFailed(true);
         } else {
-          setImgState("failed");
+          setFallbackFailed(true);
         }
       }}
     />

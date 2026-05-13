@@ -50,7 +50,8 @@ export type RawItem = {
   incompatibleTraits?: string[];
   isEmblem?: boolean;
   unique?: boolean;
-  // Some CDragon versions expose a tags array; used for category hints when present.
+  hidden?: boolean;
+  // Some CDragon versions expose a tags array.
   tags?: string[];
 };
 
@@ -117,75 +118,113 @@ function normalizeBreakpoints(effects: RawTraitEffect[]): TraitBreakpoint[] {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Regex for universal TFT items (no set number — usable across all sets)
+const UNIVERSAL_ITEM_RE = /^TFT_Item_/i;
+// Regex for current-set specific items
+const CURRENT_SET_ITEM_RE = new RegExp(`^TFT${CURRENT_SET}_Item_`, "i");
+
+// Substrings in apiName that always indicate non-equippable internal entries
+const ITEM_API_BLOCKLIST = [
+  "_placeholder",
+  "tutorial",
+  "debug",
+  "augment",        // augments are a separate system
+  "_chroma",        // cosmetic chroma variants, not real items
+  "_tactician",     // tactician items (cosmetic)
+  "_consumable",    // consumables like Neeko's Help
+  "vfx",            // visual effect assets
+  "_buff_",         // in-game buff icons, not equippable items
+  "_perk",          // perk icons
+  "_passive",       // passive ability icons
+  "_tooltip",       // tooltip sprites
+  "_temp",          // temporary internal items
+  "heroaugment",    // old TFT9 hero augment remnants
+  "_icon_",         // UI icon assets
+  "training_",      // training mode dummies
+];
+
+/**
+ * Returns true only for valid equippable TFT items.
+ *
+ * Filtering strategy (in order):
+ *   1. Must have apiName, name, and icon — basic presence check
+ *   2. Must not be flagged `hidden: true` (internal CDragon flag)
+ *   3. apiName must be TFT_Item_* (universal) or TFT{SET}_Item_* (current-set)
+ *      — this single rule drops all legacy items from old sets automatically
+ *   4. apiName must not match any known internal/non-equippable patterns
+ *   5. Name must look like a real display name (not a path, not too short/long)
+ *   6. Icon path must be an ASSETS path (not empty or a VFX chunk)
+ */
 function isUsableItem(item: RawItem): boolean {
-  if (!item.icon || !item.apiName || !item.name?.trim()) return false;
-  const api = item.apiName;
-  return (
-    !api.includes("_placeholder") &&
-    !api.includes("Tutorial") &&
-    !api.includes("Debug") &&
-    !api.includes("Augment") &&
-    !api.includes("_Tactician") &&
-    !api.includes("_Consumable")
-  );
+  // Presence
+  if (!item.apiName || !item.name?.trim() || !item.icon) return false;
+
+  // Hidden/internal flag
+  if (item.hidden) return false;
+
+  // Prefix filter — drop everything that is not a universal or current-set item
+  if (!UNIVERSAL_ITEM_RE.test(item.apiName) && !CURRENT_SET_ITEM_RE.test(item.apiName)) {
+    return false;
+  }
+
+  // Blocklist check on lowercase apiName
+  const apiLower = item.apiName.toLowerCase();
+  if (ITEM_API_BLOCKLIST.some((bad) => apiLower.includes(bad))) {
+    console.debug(`[TFT] Skipping blocked item: ${item.apiName}`);
+    return false;
+  }
+
+  // Name sanity — must not look like a file path or internal ID
+  const name = item.name.trim();
+  if (name.length < 3 || name.length > 80) return false;
+  if (name.includes("/") || name.includes("\\")) return false;
+  if (/^TFT[_\d]/i.test(name)) return false; // name that looks like an apiName
+
+  // Icon must point to an ASSETS path
+  if (!item.icon.toLowerCase().includes("assets/")) return false;
+
+  return true;
 }
 
 /**
- * Determine item category from CDragon fields.
+ * Categorize a valid TFT item.
  *
- * Priority order:
- *   1. Emblem   — isEmblem flag OR associatedTraits present
- *   2. Radiant  — "Radiant" in apiName or name
- *   3. Artifact — "Ornn" or "Artifact" in apiName (Ornn / Artifact items)
- *   4. Component — appears as an ingredient in another item's composition array
- *   5. Normal   — everything else (assembled non-radiant non-artifact items)
- *
- * The `tags` array (present in some CDragon versions) is checked as a secondary
- * signal for radiant/artifact detection.
+ * Priority:
+ *   1. Emblem   — isEmblem flag OR has associatedTraits OR "emblem" in apiName
+ *   2. Radiant  — "radiant" in apiName or name starts with "Radiant "
+ *   3. Artifact — "ornn" or "artifact" in apiName
+ *   4. Trait    — set-specific items (TFT{SET}_Item_*) that aren't already classified
+ *   5. Normal   — universal items (TFT_Item_*), includes basic components + assembled items
  */
-function categorizeItem(
-  item: RawItem,
-  componentApiNames: Set<string>
-): TFTItemCategory {
-  const api = item.apiName.toLowerCase();
-  const name = item.name.toLowerCase();
-  const tags = (item.tags ?? []).map((t) => t.toLowerCase());
+function categorizeItem(item: RawItem): TFTItemCategory {
+  const apiLower = item.apiName.toLowerCase();
+  const nameLower = item.name.toLowerCase();
 
   // 1. Emblem
   if (
     item.isEmblem ||
     (item.associatedTraits?.length ?? 0) > 0 ||
-    api.includes("emblem") ||
-    tags.includes("emblem")
+    apiLower.includes("emblem")
   ) {
     return "emblem";
   }
 
   // 2. Radiant
-  if (
-    api.includes("radiant") ||
-    name.startsWith("radiant ") ||
-    tags.includes("radiant")
-  ) {
+  if (apiLower.includes("radiant") || nameLower.startsWith("radiant ")) {
     return "radiant";
   }
 
-  // 3. Artifact (Ornn items + items explicitly tagged as artifacts)
-  if (
-    api.includes("ornn") ||
-    api.includes("artifact") ||
-    tags.includes("artifact") ||
-    tags.includes("ornn")
-  ) {
+  // 3. Artifact (Ornn items)
+  if (apiLower.includes("ornn") || apiLower.includes("artifact")) {
     return "artifact";
   }
 
-  // 4. Component — data-driven: only items actually used as ingredients elsewhere
-  if ((item.composition?.length ?? 0) === 0 && componentApiNames.has(item.apiName)) {
-    return "component";
+  // 4. Trait — set-specific items that weren't caught above
+  if (CURRENT_SET_ITEM_RE.test(item.apiName)) {
+    return "trait";
   }
 
-  // 5. Normal
+  // 5. Normal (universal TFT_Item_* items — assembled items and basic components alike)
   return "normal";
 }
 
@@ -276,29 +315,14 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
       hasEmblem: emblemTraitNames.has(t.apiName),
     }));
 
-  // Pass 1: collect every apiName that appears as a composition ingredient.
-  // This is the data-driven way to identify true components vs. special no-recipe items.
-  const componentApiNames = new Set<string>();
-  for (const item of raw.items ?? []) {
-    for (const ingredient of item.composition ?? []) {
-      componentApiNames.add(ingredient);
-    }
-  }
+  const rawItems = raw.items ?? [];
+  const totalRaw = rawItems.length;
 
-  const usableRawItems = (raw.items ?? []).filter(isUsableItem);
-  let uncategorized = 0;
+  const usableRawItems = rawItems.filter(isUsableItem);
+  console.info(`[TFT] Items: ${usableRawItems.length} valid / ${totalRaw} raw (${totalRaw - usableRawItems.length} filtered out)`);
 
-  // Pass 2: normalize each item with a stable category derived from CDragon fields.
   const items: TFTItem[] = usableRawItems.map((i) => {
-    const category = categorizeItem(i, componentApiNames);
-
-    if (category === "normal" && (i.composition?.length ?? 0) === 0 && !componentApiNames.has(i.apiName)) {
-      // Item has no composition and is not used as an ingredient — likely a special/
-      // consumable that slipped past the filter. Log it for visibility.
-      uncategorized++;
-      console.warn(`[TFT] Possibly uncategorized item: ${i.apiName} "${i.name}"`);
-    }
-
+    const category = categorizeItem(i);
     return {
       apiName: i.apiName,
       name: i.name,
@@ -312,16 +336,13 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     };
   });
 
-  if (uncategorized > 0) {
-    console.info(`[TFT] ${uncategorized} items fell through to "normal" with no recipe — review filter rules`);
-  }
-
+  const categoryCounts = items.reduce(
+    (acc, i) => { acc[i.category] = (acc[i.category] ?? 0) + 1; return acc; },
+    {} as Record<string, number>
+  );
   console.info(
-    `[TFT] Items: ${items.length} total | ` +
-    Object.entries(
-      items.reduce((acc, i) => { acc[i.category] = (acc[i.category] ?? 0) + 1; return acc; },
-      {} as Record<string, number>)
-    ).map(([k, v]) => `${k}=${v}`).join(", ")
+    `[TFT] Item categories: ` +
+    Object.entries(categoryCounts).map(([k, v]) => `${k}=${v}`).join(", ")
   );
 
   return {

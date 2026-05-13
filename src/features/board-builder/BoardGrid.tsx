@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { Star, X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
@@ -36,11 +36,22 @@ const COST_HEX_BORDER: Record<number, string> = {
 // ---------------------------------------------------------------------------
 
 function ChampionImg({ champion, className }: { champion: TFTChampion; className?: string }) {
-  const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
-    champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
-  );
+  const [primaryFailed, setPrimaryFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
 
-  if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
+  // Reset failure flags when URLs change — fixes stale state when mock data is
+  // replaced by real CDragon data after initial mount.
+  useEffect(() => {
+    setPrimaryFailed(false);
+    setFallbackFailed(false);
+  }, [champion.iconUrl, champion.fallbackIconUrl]);
+
+  const src =
+    !primaryFailed && champion.iconUrl ? champion.iconUrl
+    : !fallbackFailed && champion.fallbackIconUrl ? champion.fallbackIconUrl
+    : null;
+
+  if (!src) {
     return (
       <div className={cn("flex items-center justify-center bg-muted/40 text-[9px] text-muted-foreground text-center leading-tight px-0.5", className)}>
         {champion.name.slice(0, 7)}
@@ -50,14 +61,19 @@ function ChampionImg({ champion, className }: { champion: TFTChampion; className
 
   return (
     <img
-      src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
+      src={src}
       alt={champion.name}
       className={cn("object-cover", className)}
-      loading="lazy"
+      loading="eager"
       draggable={false}
       onError={() => {
-        if (imgState === "primary" && champion.fallbackIconUrl) setImgState("fallback");
-        else setImgState("failed");
+        if (!primaryFailed && src === champion.iconUrl) {
+          console.debug(`[TFT] Primary icon failed for ${champion.name}, trying fallback`);
+          setPrimaryFailed(true);
+        } else {
+          console.debug(`[TFT] All icons failed for ${champion.name}`);
+          setFallbackFailed(true);
+        }
       }}
     />
   );
@@ -69,7 +85,7 @@ function ChampionImg({ champion, className }: { champion: TFTChampion; className
 
 function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: number) => void }) {
   return (
-    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 flex gap-px pointer-events-none">
+    <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 z-20 flex gap-px pointer-events-none">
       {[1, 2, 3].map((level) => {
         const isFilled = level <= starLevel;
         const isGold = starLevel === 3;
@@ -93,9 +109,9 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
             aria-label={`Set star level ${level}`}
           >
             <Star
-              size={11}
-              strokeWidth={isFilled ? 2.5 : 1.5}
-              stroke={isFilled ? "rgba(0,0,0,0.75)" : "currentColor"}
+              size={16}
+              strokeWidth={isFilled ? 2 : 1.5}
+              stroke={isFilled ? "rgba(0,0,0,0.8)" : "currentColor"}
               fill={isFilled ? "currentColor" : "none"}
               style={isFilled ? { paintOrder: "stroke fill" } : undefined}
             />
