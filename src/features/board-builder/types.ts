@@ -39,9 +39,10 @@ export type BoardUnit = z.infer<typeof boardUnitSchema>;
 export const boardStepSchema = z.object({
   id: z.string(),
   title: z.string().min(1).max(120),
-  level: z.number().int().min(1).max(11),
+  level: z.number().int().min(1).max(10),
   stepType: z.enum(STEP_TYPES).default("early"),
-  description: z.string().max(2000).default(""),
+  // HTML content from TipTap rich text editor
+  description: z.string().max(5000).default(""),
   units: z.array(boardUnitSchema).default([]),
   sortOrder: z.number().int(),
 });

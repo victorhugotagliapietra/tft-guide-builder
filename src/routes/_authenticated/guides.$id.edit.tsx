@@ -145,14 +145,14 @@ function EditGuide() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-12 text-muted-foreground">Loading...</div>
+      <div className="mx-auto max-w-6xl px-4 py-12 text-muted-foreground">Loading...</div>
     );
   }
 
   const isPublic = form.watch("is_public");
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 space-y-6">
+    <div className="mx-auto max-w-6xl px-4 py-10 space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Edit guide</h1>
@@ -213,41 +213,15 @@ function EditGuide() {
               <CardTitle>Basics</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name="title"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Title</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Set 14 Reroll Jinx" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} placeholder="Short summary of the comp..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <div className="grid sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="tft_set"
+                  name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>TFT Set</FormLabel>
+                      <FormLabel>Title</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. 17" {...field} />
+                        <Input placeholder="e.g. Set 17 Reroll Jinx" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -267,6 +241,19 @@ function EditGuide() {
                   )}
                 />
               </div>
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea rows={3} placeholder="Short summary of the comp..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </CardContent>
           </Card>
 

@@ -8,6 +8,7 @@ import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode } from "@/features/tft-data/planner-code";
 import { boardStepSchema, STEP_TYPE_LABELS, type BoardStep } from "@/features/board-builder/types";
 import { ReadOnlyBoardGrid } from "@/features/board-builder/ReadOnlyBoardGrid";
+import { RichTextContent } from "@/features/board-builder/RichTextEditor";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -113,9 +114,10 @@ function ReadOnlyStepCard({
       {expanded && (
         <div className="p-4 space-y-4 bg-card">
           {step.description && (
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-              {step.description}
-            </p>
+            <RichTextContent
+              html={step.description}
+              className="text-muted-foreground"
+            />
           )}
 
           {unitCount > 0 ? (

@@ -32,8 +32,8 @@ import { BoardGrid } from "./BoardGrid";
 import { ItemsPanel } from "./ItemsPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { RichTextEditor } from "./RichTextEditor";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -250,19 +250,8 @@ function ChampionPanel({ occupiedKeys }: { occupiedKeys: string[] }) {
         </div>
       </div>
 
-      {/* Champion grid */}
-      <div
-        className={cn(
-          "flex flex-wrap gap-x-2 gap-y-3 overflow-y-auto pr-1",
-          // Minimal scrollbar
-          "[&::-webkit-scrollbar]:w-1",
-          "[&::-webkit-scrollbar-track]:bg-transparent",
-          "[&::-webkit-scrollbar-thumb]:rounded-full",
-          "[&::-webkit-scrollbar-thumb]:bg-white/10",
-          "hover:[&::-webkit-scrollbar-thumb]:bg-white/20"
-        )}
-        style={{ maxHeight: "232px" }}
-      >
+      {/* Champion grid — no scroll, grows with content */}
+      <div className="flex flex-wrap gap-x-2 gap-y-3">
         {filtered.map((champion) => (
           <DraggableChampionTile
             key={champion.apiName}
@@ -514,13 +503,14 @@ export function BoardStepCard({
               <Input
                 type="number"
                 min={1}
-                max={11}
+                max={10}
+                inputMode="numeric"
                 value={step.level}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 1 && val <= 11) onUpdate(step.id, { level: val });
+                  if (!isNaN(val) && val >= 1 && val <= 10) onUpdate(step.id, { level: val });
                 }}
-                className="h-8 text-sm bg-background/60"
+                className="h-8 text-sm bg-background/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
             </div>
             <div className="space-y-1.5">
@@ -543,13 +533,11 @@ export function BoardStepCard({
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Notes</Label>
-            <Textarea
-              rows={2}
+            <RichTextEditor
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(html) => setDescription(html)}
               onBlur={() => onUpdate(step.id, { description })}
               placeholder="When to roll, when to level, who holds items…"
-              className="text-sm resize-none bg-background/60"
             />
           </div>
 

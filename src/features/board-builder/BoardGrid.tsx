@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
-import { COST_COLORS } from "@/features/tft-data/mock-champions";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTChampion } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
@@ -13,16 +12,26 @@ import { cn } from "@/lib/utils";
 // Hex geometry
 // ---------------------------------------------------------------------------
 
-const HEX_W = 64;
-const HEX_H = 74;
-const ROW_PITCH = Math.round(HEX_H * 0.75); // 56px
-const GAP = 3;
+const HEX_W = 70;
+const HEX_H = 80;
+const ROW_PITCH = Math.round(HEX_H * 0.75); // 60px
+const GAP = 4;
 const CELL_W = HEX_W - GAP;
 const CELL_H = HEX_H - GAP;
 const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
 
-export const HEX_CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2; // 480
-export const HEX_CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H; // 242
+export const HEX_CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2; // 525
+export const HEX_CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H; // 260
+
+// Cost-tier colors used as hex "border" fill — matches the outside card rings
+const COST_HEX_BORDER: Record<number, string> = {
+  0: "bg-zinc-500",
+  1: "bg-slate-400",
+  2: "bg-green-500",
+  3: "bg-blue-500",
+  4: "bg-purple-500",
+  5: "bg-yellow-400",
+};
 
 // ---------------------------------------------------------------------------
 // Champion image with 2-step fallback
@@ -41,19 +50,22 @@ function ChampionImg({
 
   if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
     return (
-      <span className={cn("text-[8px] leading-tight text-center px-0.5 break-words", className)}>
+      <div
+        className={cn(
+          "flex items-center justify-center bg-muted/40 text-[9px] text-muted-foreground text-center leading-tight px-0.5",
+          className
+        )}
+      >
         {champion.name.slice(0, 7)}
-      </span>
+      </div>
     );
   }
 
-  const src = imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl;
-
   return (
     <img
-      src={src}
+      src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
       alt={champion.name}
-      className={className}
+      className={cn("object-cover", className)}
       loading="lazy"
       draggable={false}
       onError={() => {
@@ -68,8 +80,7 @@ function ChampionImg({
 }
 
 // ---------------------------------------------------------------------------
-// Draggable unit (inside a hex that has a champion)
-// dnd-kit id: "hex:<position>"
+// Draggable unit — fills the hex, cost border, star overlay
 // ---------------------------------------------------------------------------
 
 function DraggableUnit({
@@ -86,7 +97,6 @@ function DraggableUnit({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `hex:${pos}`,
   });
-  const colors = COST_COLORS[champion.cost] ?? COST_COLORS[1];
 
   return (
     <div
@@ -95,27 +105,51 @@ function DraggableUnit({
       {...attributes}
       style={{ touchAction: "none" }}
       className={cn(
-        "w-full h-full flex flex-col items-center justify-center cursor-grab active:cursor-grabbing select-none",
-        colors.bg,
-        colors.text,
-        isDragging && "opacity-30",
-        isSelected && "brightness-125"
+        "absolute inset-0 cursor-grab active:cursor-grabbing select-none",
+        isDragging && "opacity-30"
       )}
     >
-      <ChampionImg
-        champion={champion}
-        className="w-9 h-9 object-cover pointer-events-none"
+      {/* Cost-color hex (acts as 2px border around the image) */}
+      <div
+        className={cn(
+          "absolute inset-0",
+          COST_HEX_BORDER[champion.cost] ?? COST_HEX_BORDER[1]
+        )}
+        style={{ clipPath: CLIP }}
       />
-      <span className="text-[8px] opacity-60 leading-none mt-0.5 pointer-events-none">
+
+      {/* Champion image — inset by 2px so the cost color shows as a border */}
+      <div
+        className="absolute"
+        style={{ inset: 2, clipPath: CLIP }}
+      >
+        <ChampionImg
+          champion={champion}
+          className="w-full h-full pointer-events-none"
+        />
+      </div>
+
+      {/* Star level badge */}
+      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-white drop-shadow z-10 pointer-events-none px-1.5 rounded bg-black/55 leading-tight">
         {starLevel}★
       </span>
+
+      {/* Selection ring */}
+      {isSelected && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            clipPath: CLIP,
+            boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.85)",
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Droppable hex cell
-// dnd-kit id: "hex:<position>"
+// Droppable hex
 // ---------------------------------------------------------------------------
 
 function DroppableHex({
@@ -144,23 +178,28 @@ function DroppableHex({
         top,
         width: CELL_W,
         height: CELL_H,
-        clipPath: CLIP,
       }}
-      className={cn(
-        "flex flex-col items-center justify-center transition-all",
-        isEmpty && "bg-muted/20",
-        isPlaceTarget && isEmpty && "bg-primary/20",
-        isOver && isEmpty && "bg-primary/40 brightness-125",
-        isOver && !isEmpty && "brightness-150"
-      )}
-      title={isEmpty ? `Hex ${pos}` : undefined}
+      className="relative"
     >
-      {children}
-      {isEmpty && isOver && (
-        <span className="text-primary/70 text-xl leading-none pointer-events-none">+</span>
+      {/* Empty hex background */}
+      {isEmpty && (
+        <div
+          className={cn(
+            "absolute inset-0 transition-colors",
+            "bg-muted/12",
+            isPlaceTarget && "bg-primary/15",
+            isOver && "bg-primary/30"
+          )}
+          style={{ clipPath: CLIP }}
+        />
       )}
-      {isEmpty && !isOver && isPlaceTarget && (
-        <span className="text-primary/40 text-xl leading-none pointer-events-none">+</span>
+
+      {children}
+
+      {isEmpty && isOver && (
+        <div className="absolute inset-0 flex items-center justify-center text-primary/70 text-xl pointer-events-none">
+          +
+        </div>
       )}
     </div>
   );
@@ -176,7 +215,6 @@ type Props = {
   onHexClick: (pos: number) => void;
   onRemove: (pos: number) => void;
   onCancelSelection: () => void;
-  /** True while any champion tile in the picker is being dragged */
   isDraggingFromPanel: boolean;
 };
 
@@ -226,7 +264,6 @@ export function BoardGrid({
                 isPlaceTarget={isDraggingFromPanel}
               >
                 {champion && unit ? (
-                  // Clicking an occupied hex selects it (for removal via status bar)
                   <div
                     className="w-full h-full"
                     onClick={() => onHexClick(pos)}
@@ -249,7 +286,6 @@ export function BoardGrid({
         )}
       </div>
 
-      {/* Status bar when a unit is selected */}
       {selectedUnit && selectedChampion && (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-sm">
           <span className="flex-1 text-muted-foreground">

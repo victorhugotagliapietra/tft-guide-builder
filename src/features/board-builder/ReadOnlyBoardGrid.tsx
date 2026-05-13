@@ -1,16 +1,15 @@
 import { useState } from "react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
-import { COST_COLORS } from "@/features/tft-data/mock-champions";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTChampion } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
 import { cn } from "@/lib/utils";
 
-// Matches BoardGrid geometry
-const HEX_W = 64;
-const HEX_H = 74;
+// Match BoardGrid geometry
+const HEX_W = 70;
+const HEX_H = 80;
 const ROW_PITCH = Math.round(HEX_H * 0.75);
-const GAP = 3;
+const GAP = 4;
 const CELL_W = HEX_W - GAP;
 const CELL_H = HEX_H - GAP;
 const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
@@ -18,48 +17,53 @@ const CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
 const CONTAINER_W = BOARD_COLS * HEX_W + HEX_W / 2;
 const CONTAINER_H = (BOARD_ROWS - 1) * ROW_PITCH + HEX_H;
 
-function ChampionDisplay({
+const COST_HEX_BORDER: Record<number, string> = {
+  0: "bg-zinc-500",
+  1: "bg-slate-400",
+  2: "bg-green-500",
+  3: "bg-blue-500",
+  4: "bg-purple-500",
+  5: "bg-yellow-400",
+};
+
+function ChampionImg({
   champion,
-  unit,
+  className,
 }: {
   champion: TFTChampion;
-  unit: BoardUnit;
+  className?: string;
 }) {
   const [imgState, setImgState] = useState<"primary" | "fallback" | "failed">(
     champion.iconUrl ? "primary" : champion.fallbackIconUrl ? "fallback" : "failed"
   );
-  if (!champion) return null;
 
-  const unitItems = unit.items ?? [];
+  if (imgState === "failed" || (!champion.iconUrl && !champion.fallbackIconUrl)) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center bg-muted/40 text-[9px] text-muted-foreground text-center leading-tight px-0.5",
+          className
+        )}
+      >
+        {champion.name.slice(0, 7)}
+      </div>
+    );
+  }
 
   return (
-    <>
-      {imgState !== "failed" ? (
-        <img
-          src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
-          alt={champion.name}
-          className="w-9 h-9 object-cover"
-          loading="lazy"
-          onError={() => {
-            if (imgState === "primary" && champion.fallbackIconUrl) {
-              setImgState("fallback");
-            } else {
-              setImgState("failed");
-            }
-          }}
-        />
-      ) : (
-        <span className="text-[8px] leading-tight text-center px-0.5 truncate w-full">
-          {champion.name.slice(0, 7)}
-        </span>
-      )}
-      <span className="text-[8px] opacity-60 leading-none mt-0.5">
-        {unit.starLevel}★
-      </span>
-      {unitItems.length > 0 && (
-        <ItemIcons itemKeys={unitItems} />
-      )}
-    </>
+    <img
+      src={imgState === "primary" ? champion.iconUrl : champion.fallbackIconUrl}
+      alt={champion.name}
+      className={cn("object-cover", className)}
+      loading="lazy"
+      onError={() => {
+        if (imgState === "primary" && champion.fallbackIconUrl) {
+          setImgState("fallback");
+        } else {
+          setImgState("failed");
+        }
+      }}
+    />
   );
 }
 
@@ -68,7 +72,7 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
   const itemMap = new Map(items.map((i) => [i.apiName, i]));
 
   return (
-    <div className="flex gap-0.5 justify-center mt-0.5">
+    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
         const item = itemMap.get(key);
         return item?.iconUrl ? (
@@ -76,7 +80,7 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
             key={i}
             src={item.iconUrl}
             alt={item.name}
-            className="w-3.5 h-3.5 rounded-sm object-cover"
+            className="w-3.5 h-3.5 rounded-sm object-cover ring-1 ring-black/40"
             title={item.name}
             loading="lazy"
           />
@@ -97,7 +101,7 @@ export function ReadOnlyBoardGrid({ units }: Props) {
   const unitMap = new Map(units.map((u) => [u.position, u]));
 
   return (
-    <div className="overflow-x-auto pb-1">
+    <div className="overflow-x-auto pb-2">
       <div
         className="relative"
         style={{ width: CONTAINER_W, height: CONTAINER_H }}
@@ -107,9 +111,6 @@ export function ReadOnlyBoardGrid({ units }: Props) {
             const pos = coordsToPosition(row, col);
             const unit = unitMap.get(pos);
             const champion = unit ? championMap.get(unit.championKey) : undefined;
-            const colors = champion
-              ? (COST_COLORS[champion.cost] ?? COST_COLORS[1])
-              : null;
 
             const left = col * HEX_W + (row % 2 === 1 ? HEX_W / 2 : 0) + GAP / 2;
             const top = row * ROW_PITCH + GAP / 2;
@@ -117,28 +118,38 @@ export function ReadOnlyBoardGrid({ units }: Props) {
             return (
               <div
                 key={pos}
-                style={{
-                  position: "absolute",
-                  left,
-                  top,
-                  width: CELL_W,
-                  height: CELL_H,
-                  clipPath: CLIP,
-                }}
-                className={cn(
-                  "flex flex-col items-center justify-center select-none",
-                  champion
-                    ? [colors?.bg, colors?.text]
-                    : "bg-muted/20"
-                )}
-                title={
-                  champion
-                    ? `${champion.name} ${unit!.starLevel}★`
-                    : undefined
-                }
+                style={{ position: "absolute", left, top, width: CELL_W, height: CELL_H }}
+                className="relative"
+                title={champion && unit ? `${champion.name} ${unit.starLevel}★` : undefined}
               >
-                {champion && unit && (
-                  <ChampionDisplay champion={champion} unit={unit} />
+                {champion && unit ? (
+                  <>
+                    {/* Cost-color hex border */}
+                    <div
+                      className={cn(
+                        "absolute inset-0",
+                        COST_HEX_BORDER[champion.cost] ?? COST_HEX_BORDER[1]
+                      )}
+                      style={{ clipPath: CLIP }}
+                    />
+                    {/* Champion image */}
+                    <div className="absolute" style={{ inset: 2, clipPath: CLIP }}>
+                      <ChampionImg champion={champion} className="w-full h-full" />
+                    </div>
+                    {/* Star */}
+                    <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-white drop-shadow z-10 px-1.5 rounded bg-black/55 leading-tight">
+                      {unit.starLevel}★
+                    </span>
+                    {/* Items below the hex */}
+                    {(unit.items?.length ?? 0) > 0 && (
+                      <ItemIcons itemKeys={unit.items} />
+                    )}
+                  </>
+                ) : (
+                  <div
+                    className="absolute inset-0 bg-muted/12"
+                    style={{ clipPath: CLIP }}
+                  />
                 )}
               </div>
             );
