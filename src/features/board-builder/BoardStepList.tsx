@@ -10,8 +10,6 @@ type Props = {
   onUpdate: (id: string, patch: Partial<BoardStep>) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
-  onMoveUp: (id: string) => void;
-  onMoveDown: (id: string) => void;
 };
 
 export function BoardStepList({
@@ -20,21 +18,12 @@ export function BoardStepList({
   onUpdate,
   onRemove,
   onDuplicate,
-  onMoveUp,
-  onMoveDown,
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function handleAdd() {
     const newId = onAdd();
     setExpandedId(newId);
-  }
-
-  function handleDuplicate(id: string) {
-    onDuplicate(id);
-    // The duplicate appears at the end of steps — we can't know its ID here
-    // because duplicateStep generates it inside useBoardSteps.
-    // For now just keep current expansion; user can click the new step to open it.
   }
 
   function toggle(id: string) {
@@ -57,12 +46,10 @@ export function BoardStepList({
       ) : (
         <>
           <div className="space-y-2">
-            {steps.map((step, idx) => (
+            {steps.map((step) => (
               <BoardStepCard
                 key={step.id}
                 step={step}
-                isFirst={idx === 0}
-                isLast={idx === steps.length - 1}
                 isExpanded={expandedId === step.id}
                 onToggleExpand={() => toggle(step.id)}
                 onUpdate={onUpdate}
@@ -70,9 +57,7 @@ export function BoardStepList({
                   if (expandedId === id) setExpandedId(null);
                   onRemove(id);
                 }}
-                onDuplicate={handleDuplicate}
-                onMoveUp={onMoveUp}
-                onMoveDown={onMoveDown}
+                onDuplicate={onDuplicate}
               />
             ))}
           </div>

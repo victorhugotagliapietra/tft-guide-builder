@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Globe, Lock, Trash2, ExternalLink, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { guideFormSchema, DIFFICULTIES, type GuideFormValues } from "@/features/guides/types";
+import { guideFormSchema, type GuideFormValues } from "@/features/guides/types";
 import { boardStepSchema } from "@/features/board-builder/types";
 import { useBoardSteps } from "@/features/board-builder/use-board-steps";
 import { BoardStepList } from "@/features/board-builder/BoardStepList";
@@ -24,13 +24,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,8 +71,6 @@ function EditGuide() {
     updateStep,
     removeStep,
     duplicateStep,
-    moveStepUp,
-    moveStepDown,
   } = useBoardSteps();
 
   useEffect(() => {
@@ -248,7 +239,7 @@ function EditGuide() {
                   </FormItem>
                 )}
               />
-              <div className="grid sm:grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="tft_set"
@@ -256,7 +247,7 @@ function EditGuide() {
                     <FormItem>
                       <FormLabel>TFT Set</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. 14" {...field} />
+                        <Input placeholder="e.g. 17" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -264,55 +255,18 @@ function EditGuide() {
                 />
                 <FormField
                   control={form.control}
-                  name="patch"
+                  name="playstyle"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Patch</FormLabel>
+                      <FormLabel>Playstyle</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. 14.10" {...field} />
+                        <Input placeholder="e.g. Reroll, Fast 8, Standard" {...field} />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="difficulty"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Difficulty</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {DIFFICULTIES.map((d) => (
-                            <SelectItem key={d} value={d}>
-                              {d.charAt(0).toUpperCase() + d.slice(1)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-              <FormField
-                control={form.control}
-                name="playstyle"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Playstyle</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Reroll, Fast 8, Standard" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </CardContent>
           </Card>
 
@@ -352,8 +306,6 @@ function EditGuide() {
                 onUpdate={updateStep}
                 onRemove={removeStep}
                 onDuplicate={duplicateStep}
-                onMoveUp={moveStepUp}
-                onMoveDown={moveStepDown}
               />
             </CardContent>
           </Card>
