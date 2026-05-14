@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 
 // Match BoardGrid geometry (keep these in sync — author and viewer must see
 // the same hex positions/spacing for a guide to render identically).
-const HEX_W = 84;
-const HEX_H = 96;
+const HEX_W = 104;
+const HEX_H = 120;
 const ROW_PITCH = Math.round(HEX_H * 0.75);
 const GAP = 6;
 const CELL_W = HEX_W - GAP;
@@ -104,7 +104,7 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
   const itemMap = new Map(items.map((i) => [i.apiName, i]));
 
   return (
-    <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
+    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
         const item = itemMap.get(key);
         return item?.iconUrl ? (
@@ -112,12 +112,12 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
             key={i}
             src={item.iconUrl}
             alt={item.name}
-            className="w-3 h-3 rounded-sm object-cover ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+            className="w-4 h-4 rounded-sm object-cover ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
             title={item.name}
             loading="lazy"
           />
         ) : (
-          <div key={i} className="w-3 h-3 rounded-sm bg-black/40" />
+          <div key={i} className="w-4 h-4 rounded-sm bg-black/40" />
         );
       })}
     </div>
@@ -175,7 +175,7 @@ export function ReadOnlyBoardGrid({ units }: Props) {
                         {Array.from({ length: unit.starLevel }).map((_, i) => (
                           <Star
                             key={i}
-                            size={9}
+                            size={11}
                             strokeWidth={1.5}
                             fill="currentColor"
                             stroke="rgba(0,0,0,0.85)"

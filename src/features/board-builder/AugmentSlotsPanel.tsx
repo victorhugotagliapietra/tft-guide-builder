@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
-import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { Sparkles } from "lucide-react";
+import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTAugment, TFTAugmentTier } from "@/features/tft-data/types";
+import { AugmentIcon } from "./AugmentsPanel";
 import type { AugmentSlots } from "./types";
 import { AUGMENT_SLOT_COUNT } from "./types";
 import { cn } from "@/lib/utils";
@@ -25,27 +25,12 @@ const TIER_RING: Record<TFTAugmentTier, string> = {
   prismatic: "ring-fuchsia-400/65 shadow-[0_0_8px_-2px_rgba(232,121,249,0.55)]",
 };
 
+// Thin shim around AugmentIcon (from AugmentsPanel) so assigned augments use
+// exactly the same URL fallback chain + name-placeholder behavior as the
+// pickable tiles. Keeps the visual identical whether an augment is in the
+// pool or in a slot.
 function AugmentSlotIcon({ augment }: { augment: TFTAugment }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [augment.icon]);
-
-  if (!augment.icon || failed) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-muted/40 text-[8px] text-muted-foreground text-center leading-tight px-0.5">
-        {augment.name.slice(0, 8)}
-      </div>
-    );
-  }
-  return (
-    <img
-      src={augment.icon}
-      alt={augment.name}
-      className="w-full h-full object-cover"
-      loading="lazy"
-      draggable={false}
-      onError={() => setFailed(true)}
-    />
-  );
+  return <AugmentIcon augment={augment} className="w-full h-full" />;
 }
 
 // Draggable wrapper for an assigned augment — lets the user swap or remove.
@@ -131,11 +116,12 @@ export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
   // over the seam between the two columns, which reads as "centered above the
   // panel" and "above the second column" at the same time for a 2-col grid.
   //
-  // -ml-2 pulls the panel ~8px closer to the board after the hex bump enlarged
-  // the central area. Negative margin (not a parent gap reduction) keeps the
-  // traits side spacing untouched.
+  // No negative margin: the parent layout in BoardStepCard now sizes the
+  // board to its natural width and centers the trio (traits | board | augments)
+  // with justify-center + gap-2, so this panel naturally sits 8px to the right
+  // of the board's actual right edge without any margin hacks.
   return (
-    <div className="shrink-0 flex flex-col gap-1.5 self-start -ml-2">
+    <div className="shrink-0 flex flex-col gap-1.5 self-start">
       <span className="text-[10px] font-semibold text-foreground/70 tracking-wider uppercase text-center">
         Augments
       </span>

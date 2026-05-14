@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Search, X } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
@@ -21,50 +21,130 @@ const TIER_TILE: Record<TFTAugmentTier, string> = {
   prismatic: "ring-fuchsia-400/60 hover:ring-fuchsia-300/80 shadow-[0_0_6px_-3px_rgba(232,121,249,0.55)]",
 };
 
+// Background fill for the name placeholder when icon URLs all fail — tinted
+// per tier so the tile still reads as silver/gold/prismatic without an icon.
+const TIER_PLACEHOLDER_BG: Record<TFTAugmentTier, string> = {
+  silver:    "bg-slate-700/60",
+  gold:      "bg-yellow-900/55",
+  prismatic: "bg-gradient-to-br from-fuchsia-900/55 to-cyan-900/55",
+};
+
 // ---------------------------------------------------------------------------
-// Augment icon — purely an <img> with an onError callback. The runtime broken-
-// icon set lives in the parent so a failed image can be removed from the grid
-// in the same render tick (filter excludes it on the next pass).
+// Augment icon URL fallback chain
+// ---------------------------------------------------------------------------
+//
+// CDragon advertises every augment's `.tex` path but doesn't always ship the
+// converted `.png`. Rather than pre-filtering augments at build time (which
+// over-aggressively deleted valid Set 17 entries), we try a sequence of URL
+// variants at render time and fall through to a clean name placeholder only
+// if every candidate fails. The augment stays in the catalog throughout.
+//
+// Generated variants (in priority order):
+//   1. Primary URL (assetUrl(icon)) — as normalize.ts produced it
+//   2. Set-tag stripped (e.g. `_II.tft_set17.png` → `_II.png`)
+//   3. Tier-suffix stripped (`spellsword_ii.png` → `spellsword.png`)
+//   4. Both stripped
+//   5. Single trailing digit stripped (`snipersnest2.png` → `snipersnest.png`)
+//   6. Hyphens ↔ underscores in the filename
+//
+// All of these are cheap regex transforms; we de-dup the resulting list so
+// each unique URL is tried at most once.
+function buildAugmentIconCandidates(primary: string): string[] {
+  if (!primary) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (url: string) => {
+    if (url && !seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  };
+
+  push(primary);
+
+  // Drop ".tft_setN..." / ".tft_N_M..." set-tag suffix in the filename.
+  const noSetTag = primary.replace(/\.tft[_\-]?(set)?\d+(_\d+)?\.png$/i, ".png");
+  push(noSetTag);
+
+  // Drop a trailing tier suffix: `-i`, `-ii`, `-iii`, `_i`, `_ii`, `_iii`.
+  const dropTier = (url: string) => url.replace(/[-_]i{1,3}\.png$/i, ".png");
+  push(dropTier(primary));
+  push(dropTier(noSetTag));
+
+  // Drop a single trailing digit (e.g. `snipersnest2.png` → `snipersnest.png`).
+  push(primary.replace(/\d\.png$/i, ".png"));
+  push(noSetTag.replace(/\d\.png$/i, ".png"));
+
+  // Swap hyphens/underscores in the filename portion only (keep the path).
+  const swapSeparators = (url: string) => {
+    const slash = url.lastIndexOf("/");
+    if (slash < 0) return url;
+    const path = url.slice(0, slash + 1);
+    const file = url.slice(slash + 1);
+    return [
+      path + file.replace(/-/g, "_"),
+      path + file.replace(/_/g, "-"),
+    ];
+  };
+  for (const v of swapSeparators(primary)) push(v);
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Augment icon with a multi-URL fallback chain.
+// onAllFailed fires once when every candidate URL has 404'd — useful in
+// AugmentSlotsPanel etc. where we want to know if the assigned augment can't
+// render an image (it still renders, just with the name placeholder).
 // ---------------------------------------------------------------------------
 
-function AugmentIcon({
+export function AugmentIcon({
   augment,
   className,
-  onImageError,
+  onAllFailed,
 }: {
   augment: TFTAugment;
   className?: string;
-  onImageError?: () => void;
+  onAllFailed?: () => void;
 }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [augment.icon]);
+  const candidates = useMemo(() => buildAugmentIconCandidates(augment.icon), [augment.icon]);
+  const [attemptIdx, setAttemptIdx] = useState(0);
 
-  if (!augment.icon || failed) {
-    // Visible fallback — but the parent will also remove this augment from
-    // its filtered list on the next render via the onImageError callback,
-    // so this state is short-lived (one paint at most).
+  // Reset attempt counter when the augment changes (component reuse case).
+  useEffect(() => setAttemptIdx(0), [augment.icon]);
+
+  // Notify parent once we've truly exhausted the fallback chain.
+  useEffect(() => {
+    if (attemptIdx >= candidates.length && candidates.length > 0) {
+      onAllFailed?.();
+    }
+  }, [attemptIdx, candidates.length, onAllFailed]);
+
+  if (candidates.length === 0 || attemptIdx >= candidates.length) {
+    // Name placeholder — same footprint as the icon, tier-tinted background,
+    // truncated name so the tile is still recognizable & drag-targetable.
     return (
       <div
         className={cn(
-          "flex items-center justify-center bg-muted/40 text-[7px] text-muted-foreground text-center leading-tight px-0.5",
+          "flex items-center justify-center text-[7px] font-medium text-white/85 text-center leading-tight px-0.5",
+          TIER_PLACEHOLDER_BG[augment.tier],
           className
         )}
+        title={augment.name}
       >
-        {augment.name.slice(0, 5)}
+        <span className="line-clamp-2">{augment.name}</span>
       </div>
     );
   }
+
   return (
     <img
-      src={augment.icon}
+      src={candidates[attemptIdx]}
       alt={augment.name}
       className={cn("object-contain", className)}
       loading="lazy"
       draggable={false}
-      onError={() => {
-        setFailed(true);
-        onImageError?.();
-      }}
+      onError={() => setAttemptIdx((i) => i + 1)}
     />
   );
 }
@@ -74,13 +154,7 @@ function AugmentIcon({
 // Footprint is fixed (no scale on hover) so the dense grid never reflows.
 // ---------------------------------------------------------------------------
 
-export function DraggableAugmentTile({
-  augment,
-  onImageError,
-}: {
-  augment: TFTAugment;
-  onImageError?: () => void;
-}) {
+export function DraggableAugmentTile({ augment }: { augment: TFTAugment }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `augment:${augment.apiName}`,
   });
@@ -98,14 +172,13 @@ export function DraggableAugmentTile({
         isDragging && "opacity-40"
       )}
     >
-      <AugmentIcon augment={augment} className="w-full h-full" onImageError={onImageError} />
+      <AugmentIcon augment={augment} className="w-full h-full" />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Drag overlay preview — rendered inside <DragOverlay> by BoardStepCard.
-// Uses the same tile dimensions so the overlay tracks the cursor cleanly.
 // ---------------------------------------------------------------------------
 
 export function AugmentDragOverlay({ augment }: { augment: TFTAugment }) {
@@ -123,27 +196,14 @@ export function AugmentDragOverlay({ augment }: { augment: TFTAugment }) {
 
 // ---------------------------------------------------------------------------
 // AugmentsPanel — pure icon grid. No section title, no tier headers, no
-// dividers, no counts. Only the search field and the grid itself.
+// dividers, no counts. Augments are never filtered out — even ones with
+// broken icons render as a name placeholder so the catalog stays complete.
 // ---------------------------------------------------------------------------
 
 export function AugmentsPanel() {
   const { augmentsByTier } = useTFTData();
   const [search, setSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Runtime broken-icon Set. normalize.ts curates a static blocklist of
-  // known-404 icons, but anything CDragon adds in the future that 404s will
-  // be caught here on first paint and removed from subsequent renders.
-  const [brokenIcons, setBrokenIcons] = useState<Set<string>>(() => new Set());
-  const markBroken = useCallback((apiName: string) => {
-    setBrokenIcons((prev) => {
-      if (prev.has(apiName)) return prev;
-      const next = new Set(prev);
-      next.add(apiName);
-      console.debug(`[TFT] Runtime: hiding augment with broken icon: ${apiName}`);
-      return next;
-    });
-  }, []);
 
   // Flatten by tier into a single ordered list — internal silver → gold →
   // prismatic order is preserved (signaled by ring color) but we render one
@@ -155,14 +215,13 @@ export function AugmentsPanel() {
     for (const tier of TIER_ORDER) {
       for (const a of augmentsByTier[tier]) {
         if (seen.has(a.apiName)) continue;
-        if (brokenIcons.has(a.apiName)) continue;
         if (q && !a.name.toLowerCase().includes(q)) continue;
         seen.add(a.apiName);
         out.push(a);
       }
     }
     return out;
-  }, [augmentsByTier, search, brokenIcons]);
+  }, [augmentsByTier, search]);
 
   return (
     <div className="flex flex-col gap-1.5 min-h-0">
@@ -194,12 +253,14 @@ export function AugmentsPanel() {
         </div>
       </div>
 
-      {/* Dense icon grid — fluid columns auto-fill the available width with
-          40px tiles + 4px gaps. Tier sequence is encoded in the source order;
-          the ring color on each tile signals its tier without needing a header. */}
+      {/* Dense icon grid. Internal padding (p-1.5) keeps the first row/column
+          off the container edge so tile rings + shadows aren't clipped against
+          the scrollbar or the panel border. Fluid columns auto-fill the panel
+          width with 40px tiles; gap-1.5 trades a hair of density for clearer
+          per-tile separation. */}
       <div
         className={cn(
-          "grid gap-1 overflow-y-auto pr-1 min-h-[120px] justify-items-start",
+          "grid p-1.5 gap-1.5 overflow-y-auto justify-items-start",
           "scroll-smooth",
           "[&::-webkit-scrollbar]:w-1.5",
           "[&::-webkit-scrollbar-track]:bg-transparent",
@@ -218,13 +279,7 @@ export function AugmentsPanel() {
             No augments found
           </p>
         ) : (
-          visible.map((a) => (
-            <DraggableAugmentTile
-              key={a.apiName}
-              augment={a}
-              onImageError={() => markBroken(a.apiName)}
-            />
-          ))
+          visible.map((a) => <DraggableAugmentTile key={a.apiName} augment={a} />)
         )}
       </div>
     </div>

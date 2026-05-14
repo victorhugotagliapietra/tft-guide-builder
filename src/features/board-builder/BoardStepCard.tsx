@@ -1041,14 +1041,20 @@ export function BoardStepCard({
                 </Button>
               </div>
               {/* Board flanked by traits (left) and augment slots (right).
-                  Center board area scrolls horizontally if the viewport is
-                  too narrow to host the bumped hex geometry without overflow.
-                  Gap reduced from gap-3 to gap-2 to pull the augment panel
-                  closer to the board (also tightens traits-panel side equally,
-                  which keeps the board visually centered). */}
-              <div className="flex items-start gap-2">
+                  CRITICAL LAYOUT NOTE: the board wrapper deliberately does
+                  NOT use `flex-1`. With flex-1 the wrapper expanded to fill
+                  every available pixel and the hex grid (which is absolutely
+                  sized to HEX_CONTAINER_W) sat in the left portion — leaving
+                  hundreds of empty pixels between the rightmost hex and the
+                  augment panel. By giving each child its natural width and
+                  centering the row with `justify-center`, the augment panel
+                  ends up adjacent to the board's actual right edge, with
+                  symmetric breathing room on either side. `overflow-x-auto`
+                  on the parent handles narrow viewports without breaking
+                  drag-target alignment. */}
+              <div className="flex items-start justify-center gap-2 overflow-x-auto">
                 <TraitsPanel units={step.units} />
-                <div className="flex-1 min-w-0 overflow-x-auto rounded-lg">
+                <div className="rounded-lg shrink-0">
                   <BoardGrid
                     units={step.units}
                     selectedPos={selectedPos}

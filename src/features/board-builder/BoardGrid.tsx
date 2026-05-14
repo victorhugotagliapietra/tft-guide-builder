@@ -15,13 +15,13 @@ import { cn } from "@/lib/utils";
 // Hex geometry
 // ---------------------------------------------------------------------------
 
-// Hex geometry. Bumped from 76×88 to 84×96 so the board fills the available
-// center area more tightly. The whole grid scales proportionally — drag-target
-// rectangles, snap zones, and overlay coordinates all derive from these
-// constants, so nothing downstream needs hand-tuning.
-const HEX_W = 84;
-const HEX_H = 96;
-const ROW_PITCH = Math.round(HEX_H * 0.75); // 72px
+// Hex geometry. Bumped to 104×120 (+37% vs original 76×88) so the board
+// becomes the central focus of the planner. The whole grid scales
+// proportionally — drag-target rectangles, snap zones, and overlay coordinates
+// all derive from these constants, so nothing downstream needs hand-tuning.
+const HEX_W = 104;
+const HEX_H = 120;
+const ROW_PITCH = Math.round(HEX_H * 0.75); // 90px
 // GAP = inter-hex spacing in pixels. CELL_W/CELL_H shrink to match so the
 // hex polygon stays centered in its cell.
 const GAP = 6;
@@ -144,7 +144,7 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
             aria-label={`Set star level ${level}`}
           >
             <Star
-              size={11}
+              size={13}
               strokeWidth={isFilled ? 2 : 1.5}
               stroke={isFilled ? "rgba(0,0,0,0.85)" : "currentColor"}
               fill={isFilled ? "currentColor" : "none"}
@@ -191,7 +191,7 @@ function EditableItemIcons({
   const itemMap = new Map(items.map((i) => [i.apiName, i]));
 
   return (
-    <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5 z-30 pointer-events-none">
+    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 z-30 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
         const item = itemMap.get(key);
         return (
@@ -206,7 +206,7 @@ function EditableItemIcons({
               onRemove(i);
             }}
             className={cn(
-              "pointer-events-auto relative w-3 h-3 rounded-sm ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]",
+              "pointer-events-auto relative w-4 h-4 rounded-sm ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]",
               "transition-[box-shadow,filter] duration-100",
               // No scale: stable footprint matches ItemsPanel decision; the
               // destructive ring + X overlay below signals "click to remove".
@@ -216,9 +216,9 @@ function EditableItemIcons({
             aria-label={`Remove ${item?.name ?? key}`}
           >
             <ItemIconImg iconUrl={item?.iconUrl ?? ""} name={item?.name ?? key} />
-            {/* X overlay on hover — scaled down for the smaller 12×12 tiles. */}
+            {/* X overlay on hover — sized for the 16×16 tiles. */}
             <span className="absolute inset-0 hidden group-hover/item:flex items-center justify-center bg-black/60 rounded-sm">
-              <X className="w-2 h-2 text-white" strokeWidth={3} />
+              <X className="w-2.5 h-2.5 text-white" strokeWidth={3} />
             </span>
           </button>
         );
