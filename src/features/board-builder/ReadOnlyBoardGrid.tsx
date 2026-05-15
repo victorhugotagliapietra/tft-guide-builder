@@ -104,7 +104,7 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
   const itemMap = new Map(items.map((i) => [i.apiName, i]));
 
   return (
-    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-[2px] z-10 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
         const item = itemMap.get(key);
         return item?.iconUrl ? (
@@ -112,12 +112,12 @@ function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
             key={i}
             src={item.iconUrl}
             alt={item.name}
-            className="w-4 h-4 rounded-sm object-cover ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+            className="w-7 h-7 rounded-sm object-cover ring-1 ring-black/60 shadow-[0_1px_3px_rgba(0,0,0,0.6)]"
             title={item.name}
             loading="lazy"
           />
         ) : (
-          <div key={i} className="w-4 h-4 rounded-sm bg-black/40" />
+          <div key={i} className="w-7 h-7 rounded-sm bg-black/40" />
         );
       })}
     </div>
@@ -169,17 +169,17 @@ export function ReadOnlyBoardGrid({ units }: Props) {
                       <ChampionImg champion={champion} className="w-full h-full" />
                     </div>
                     {/* Stars anchored INSIDE the top of the hex (mirrors
-                        BoardGrid). 0 hidden, 1-2 silver, 3 gold. */}
+                        BoardGrid sizing). 0 hidden, 1-2 silver, 3 gold. */}
                     {unit.starLevel > 0 && (
-                      <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 flex gap-px pointer-events-none">
+                      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex gap-0.5 pointer-events-none">
                         {Array.from({ length: unit.starLevel }).map((_, i) => (
                           <Star
                             key={i}
-                            size={11}
-                            strokeWidth={1.5}
+                            size={22}
+                            strokeWidth={2}
                             fill="currentColor"
-                            stroke="rgba(0,0,0,0.85)"
-                            style={{ paintOrder: "stroke fill", filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.7))" }}
+                            stroke="rgba(0,0,0,0.9)"
+                            style={{ paintOrder: "stroke fill", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
                             className={cn(
                               unit.starLevel === 3 ? "text-yellow-400" : "text-slate-200"
                             )}

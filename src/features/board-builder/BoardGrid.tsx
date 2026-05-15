@@ -119,8 +119,13 @@ function ChampionImg({ champion, className }: { champion: TFTChampion; className
 // ---------------------------------------------------------------------------
 
 function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: number) => void }) {
+  // Doubled-up star size (13 → 22) plus a small horizontal gap. Pulled down
+  // slightly from the very top (top-2 → top-3) because the hex polygon tapers
+  // to a point at its apex — a 3-star row at 22px each needs the polygon to
+  // be at least ~70px wide to sit "inside" the hex visually. Top-3 lands at
+  // y≈12px, just inside the full-width band that starts at y=25%·CELL_H.
   return (
-    <div className="absolute top-1 left-1/2 -translate-x-1/2 z-20 flex gap-px pointer-events-none">
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex gap-0.5 pointer-events-none">
       {[1, 2, 3].map((level) => {
         const isFilled = level <= starLevel;
         const isGold = starLevel === 3;
@@ -135,7 +140,7 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
               onSet(starLevel === level ? level - 1 : level);
             }}
             className={cn(
-              "pointer-events-auto p-0.5 transition-opacity duration-150 leading-none",
+              "pointer-events-auto p-0 transition-opacity duration-150 leading-none",
               isFilled ? "opacity-100" : "opacity-0 group-hover/hex:opacity-100",
               isFilled && isGold && "text-yellow-400",
               isFilled && !isGold && "text-slate-200",
@@ -144,11 +149,11 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
             aria-label={`Set star level ${level}`}
           >
             <Star
-              size={13}
+              size={22}
               strokeWidth={isFilled ? 2 : 1.5}
-              stroke={isFilled ? "rgba(0,0,0,0.85)" : "currentColor"}
+              stroke={isFilled ? "rgba(0,0,0,0.9)" : "currentColor"}
               fill={isFilled ? "currentColor" : "none"}
-              style={isFilled ? { paintOrder: "stroke fill", filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.7))" } : undefined}
+              style={isFilled ? { paintOrder: "stroke fill", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))" } : undefined}
             />
           </button>
         );
@@ -158,10 +163,13 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
 }
 
 // ---------------------------------------------------------------------------
-// Item icons row — anchored to the BOTTOM-INSIDE of the hex (not below it).
-// Items sit just above the bottom vertex inside the polygon, click to remove.
-// Reduced from 16×16 to 12×12 so 3 items + gaps still fit the hex's tapered
-// bottom area without poking outside the polygon outline.
+// Item icons row — anchored to the BOTTOM-INSIDE of the hex. Doubled tile
+// size (16 → 28) so equipped items are legible at a glance. Pushed up to
+// bottom-4 so the wider middle band of the polygon (y=25%–75% of CELL_H is
+// full-width) hosts the row instead of the tapered bottom point; with
+// CELL_H=114, bottom-4 puts items at y≈86 which is just inside the full-
+// width band. Three 28px items + 4px gaps = 88px, comfortably within the
+// 98px CELL_W footprint.
 // ---------------------------------------------------------------------------
 
 function ItemIconImg({ iconUrl, name }: { iconUrl: string; name: string }) {
@@ -191,7 +199,7 @@ function EditableItemIcons({
   const itemMap = new Map(items.map((i) => [i.apiName, i]));
 
   return (
-    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 z-30 pointer-events-none">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-[2px] z-30 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
         const item = itemMap.get(key);
         return (
@@ -206,7 +214,7 @@ function EditableItemIcons({
               onRemove(i);
             }}
             className={cn(
-              "pointer-events-auto relative w-4 h-4 rounded-sm ring-1 ring-black/50 shadow-[0_1px_2px_rgba(0,0,0,0.5)]",
+              "pointer-events-auto relative w-7 h-7 rounded-sm ring-1 ring-black/60 shadow-[0_1px_3px_rgba(0,0,0,0.6)]",
               "transition-[box-shadow,filter] duration-100",
               // No scale: stable footprint matches ItemsPanel decision; the
               // destructive ring + X overlay below signals "click to remove".
@@ -216,9 +224,9 @@ function EditableItemIcons({
             aria-label={`Remove ${item?.name ?? key}`}
           >
             <ItemIconImg iconUrl={item?.iconUrl ?? ""} name={item?.name ?? key} />
-            {/* X overlay on hover — sized for the 16×16 tiles. */}
+            {/* X overlay on hover — sized for the 28×28 tiles. */}
             <span className="absolute inset-0 hidden group-hover/item:flex items-center justify-center bg-black/60 rounded-sm">
-              <X className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+              <X className="w-4 h-4 text-white" strokeWidth={3} />
             </span>
           </button>
         );

@@ -62,6 +62,13 @@ export type TFTAugment = {
   description?: string;
   /** Full CDragon HTTP URL for the augment icon. */
   icon: string;
+  /**
+   * Optional secondary icon URL — populated from Riot's DDragon
+   * `tft-augments.json` when the augment exists there. Used as the highest-
+   * priority fallback when the CDragon URL 404s; recovers a meaningful chunk
+   * of augments whose CDragon `.tex` path has no matching `.png` asset.
+   */
+  iconAlt?: string;
   tier: TFTAugmentTier;
   /** Trait apiNames this augment is locked to (CDragon `associatedTraits`). */
   traits?: string[];

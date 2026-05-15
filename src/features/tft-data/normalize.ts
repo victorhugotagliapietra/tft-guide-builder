@@ -579,7 +579,7 @@ function makeAugmentId(apiName: string): string {
     .toLowerCase();
 }
 
-function normalizeAugment(raw: RawItem): TFTAugment | null {
+function normalizeAugment(raw: RawItem, ddragonUrl?: string): TFTAugment | null {
   if (!isUsableAugment(raw)) return null;
 
   const iconPath = pickAugmentIconPath(raw);
@@ -604,6 +604,9 @@ function normalizeAugment(raw: RawItem): TFTAugment | null {
     name: raw.name.trim(),
     ...(cleanedDesc.length > 0 ? { description: cleanedDesc } : {}),
     icon: iconUrl,
+    // Attach DDragon URL if available — used as a first-class fallback in
+    // AugmentIcon's candidate chain before generic regex variants are tried.
+    ...(ddragonUrl ? { iconAlt: ddragonUrl } : {}),
     tier,
     ...(associatedTraits.length > 0 ? { traits: associatedTraits } : {}),
   };
@@ -613,7 +616,22 @@ function normalizeAugment(raw: RawItem): TFTAugment | null {
 // Main normalizer
 // ---------------------------------------------------------------------------
 
-export function normalizeSetData(raw: RawTFTData): TFTSetData {
+/**
+ * Optional inputs that augment the base CDragon normalization. Each is
+ * best-effort — passing nothing or `{}` produces a valid TFTSetData using
+ * only CDragon data.
+ */
+export type NormalizeOptions = {
+  /**
+   * Riot DDragon's `tft-augments.json` mapped to a per-apiName image URL.
+   * When present, the URL is attached to the resulting TFTAugment.iconAlt
+   * and used as a render-time fallback when the CDragon .png 404s. See
+   * use-tft-data.ts for the fetcher.
+   */
+  ddragonAugments?: Record<string, string>;
+};
+
+export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): TFTSetData {
   const sets = raw.setData ?? [];
 
   // Find Set 17 explicitly — do NOT scan global arrays or other sets
@@ -811,7 +829,7 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
       continue;
     }
 
-    const aug = normalizeAugment(raw);
+    const aug = normalizeAugment(raw, opts.ddragonAugments?.[raw.apiName]);
     if (!aug) {
       // Anything left here is a sanity-check failure inside normalizeAugment
       // (name length / shape). Already rare, but count it under blocked.
@@ -839,12 +857,14 @@ export function normalizeSetData(raw: RawTFTData): TFTSetData {
     {} as Record<TFTAugmentTier, number>
   );
 
+  const ddragonAttached = augments.filter((a) => !!a.iconAlt).length;
   console.info(
     `[TFT] Augments: ${augments.length} kept / ${augmentCandidates} candidates ` +
     `(blocked=${augmentSkippedBlocked}, oldSet=${augmentSkippedOldSet}, ` +
     `missingIcon=${augmentSkippedMissingIcon}, blockedIcon=${augmentSkippedBlockedIcon}, ` +
-    `duplicates=${augmentDuplicates}). Augments whose icon URL 404s at render ` +
-    `time will fall back to a tier-tinted name placeholder, NOT be dropped.`
+    `duplicates=${augmentDuplicates}, ddragonFallbackAttached=${ddragonAttached}). ` +
+    `Augments whose every icon URL 404s at render time will fall back to a ` +
+    `tier-tinted name placeholder, NOT be dropped.`
   );
   console.info(
     `[TFT] Augment tiers: ` +

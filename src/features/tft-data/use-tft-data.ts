@@ -36,11 +36,59 @@ const DUMMY_UNITS: TFTChampion[] = [
   },
 ];
 
+// DDragon TFT augment manifest — provides an alternate image URL for augments
+// whose CDragon .png is missing. Pinned to a known-stable patch so the URL
+// never disappears (Riot keeps old DDragon patches live indefinitely). Bump
+// when verifying a newer patch exposes additional augments.
+const DDRAGON_PATCH = "14.20.1";
+const DDRAGON_TFT_AUGMENTS_URL =
+  `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_PATCH}/data/en_US/tft-augments.json`;
+const DDRAGON_TFT_AUGMENT_IMG_BASE =
+  `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_PATCH}/img/tft-augment/`;
+
+type DDragonAugment = { id: string; image?: { full?: string } };
+type DDragonAugmentsJson = { data?: Record<string, DDragonAugment> };
+
+/**
+ * Fetch DDragon's TFT augment manifest and build an apiName → image-URL map.
+ * Non-fatal: if DDragon is unavailable or returns an unexpected shape, the
+ * map is returned empty and CDragon-only resolution continues to work.
+ */
+async function fetchDDragonAugmentMap(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(DDRAGON_TFT_AUGMENTS_URL);
+    if (!res.ok) {
+      console.warn(`[TFT] DDragon augments fetch failed: ${res.status}`);
+      return {};
+    }
+    const json = (await res.json()) as DDragonAugmentsJson;
+    const out: Record<string, string> = {};
+    for (const [apiName, entry] of Object.entries(json.data ?? {})) {
+      const fname = entry.image?.full;
+      if (fname && typeof fname === "string") {
+        out[apiName] = DDRAGON_TFT_AUGMENT_IMG_BASE + fname;
+      }
+    }
+    console.info(
+      `[TFT] DDragon augment map: ${Object.keys(out).length} entries from patch ${DDRAGON_PATCH}`
+    );
+    return out;
+  } catch (err) {
+    console.warn(`[TFT] DDragon augments fetch threw:`, err);
+    return {};
+  }
+}
+
 async function fetchTFTData(): Promise<TFTSetData> {
-  const res = await fetch(TFT_DATA_URL);
-  if (!res.ok) throw new Error(`CDragon fetch failed: ${res.status}`);
-  const raw: RawTFTData = await res.json();
-  return normalizeSetData(raw);
+  // Run CDragon and DDragon requests in parallel. CDragon is required;
+  // DDragon is best-effort and never blocks the load.
+  const [cdragonRes, ddragonMap] = await Promise.all([
+    fetch(TFT_DATA_URL),
+    fetchDDragonAugmentMap(),
+  ]);
+  if (!cdragonRes.ok) throw new Error(`CDragon fetch failed: ${cdragonRes.status}`);
+  const raw: RawTFTData = await cdragonRes.json();
+  return normalizeSetData(raw, { ddragonAugments: ddragonMap });
 }
 
 /**

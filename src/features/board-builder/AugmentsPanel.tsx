@@ -87,21 +87,23 @@ function normalizeCdragonUrl(input: string): string {
 //
 // Generated variants (in priority order, deduped):
 //   1. Primary URL (assetUrl(icon)) — as normalize.ts produced it
-//   2. Path-normalized variant (handles malformed inputs)
-//   3. Set-tag stripped (e.g. `_ii.tft_set17.png` → `_ii.png`)
-//   4. Tier-suffix stripped (`spellsword_ii.png` → `spellsword.png`)
-//   5. Set-tag AND tier stripped
-//   6. Trailing single digit stripped (`snipersnest2.png` → `snipersnest.png`)
-//   7. Hyphens ↔ underscores in the filename
-//   8. Extension variants — `.png` → `.webp` / `.jpg` (some assets ship as webp)
-//   9. apiName-derived path: assets/maps/tft/icons/augments/hexcore/<lowercased_api>.png
+//   2. DDragon URL (augment.iconAlt) — Riot's CDN, populated by use-tft-data.ts
+//      when DDragon's tft-augments.json has an entry for this apiName. This
+//      recovers a meaningful chunk of augments whose CDragon .png is missing.
+//   3. Path-normalized variant (handles malformed inputs)
+//   4. Set-tag stripped (e.g. `_ii.tft_set17.png` → `_ii.png`)
+//   5. Tier-suffix stripped (`spellsword_ii.png` → `spellsword.png`)
+//   6. Set-tag AND tier stripped
+//   7. Trailing single digit stripped (`snipersnest2.png` → `snipersnest.png`)
+//   8. Hyphens ↔ underscores in the filename
+//   9. Extension variants — `.png` → `.webp` / `.jpg` (some assets ship as webp)
+//  10. apiName-derived path: assets/maps/tft/icons/augments/hexcore/<lowercased_api>.png
 //
-// All of these are cheap regex transforms; the de-dup Set ensures each unique
-// URL is tried at most once.
+// All transforms are cheap; the de-dup Set ensures each unique URL is tried
+// at most once. DDragon URLs are NOT pushed through normalizeCdragonUrl()
+// (which is CDragon-specific) — they're added verbatim.
 function buildAugmentIconCandidates(augment: TFTAugment): string[] {
   const primary = normalizeCdragonUrl(augment.icon);
-  if (!primary) return [];
-
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (url: string) => {
@@ -111,8 +113,21 @@ function buildAugmentIconCandidates(augment: TFTAugment): string[] {
       out.push(n);
     }
   };
+  // DDragon URLs use a different host + casing convention from CDragon, so
+  // they're added directly without the CDragon-specific normalizer.
+  const pushDirect = (url: string | undefined) => {
+    if (url && url.trim() && !seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  };
 
   push(primary);
+  // DDragon fallback right after the primary — second-best chance to load
+  // before we start trying generated regex variants.
+  pushDirect(augment.iconAlt);
+
+  if (!primary) return out;
 
   // Drop ".tft_setN..." / ".tft_N_M..." set-tag suffix in the filename.
   const noSetTag = primary.replace(/\.tft[_\-]?(set)?\d+(_\d+)?\.png$/i, ".png");
