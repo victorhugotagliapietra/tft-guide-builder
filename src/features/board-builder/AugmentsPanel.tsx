@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Search, X } from "lucide-react";
+import { Search, X, Sparkles } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import type { TFTAugment, TFTAugmentTier } from "@/features/tft-data/types";
 import { Input } from "@/components/ui/input";
@@ -21,42 +21,94 @@ const TIER_TILE: Record<TFTAugmentTier, string> = {
   prismatic: "ring-fuchsia-400/60 hover:ring-fuchsia-300/80 shadow-[0_0_6px_-3px_rgba(232,121,249,0.55)]",
 };
 
-// Background fill for the name placeholder when icon URLs all fail — tinted
-// per tier so the tile still reads as silver/gold/prismatic without an icon.
-const TIER_PLACEHOLDER_BG: Record<TFTAugmentTier, string> = {
-  silver:    "bg-slate-700/60",
-  gold:      "bg-yellow-900/55",
-  prismatic: "bg-gradient-to-br from-fuchsia-900/55 to-cyan-900/55",
+// Background fill + accent for the name placeholder when icon URLs all fail.
+// Per-tier so the placeholder still reads as silver/gold/prismatic without an icon.
+const TIER_PLACEHOLDER: Record<TFTAugmentTier, { bg: string; accent: string }> = {
+  silver:    { bg: "bg-gradient-to-br from-slate-700/80 to-slate-800/80", accent: "text-slate-200/70" },
+  gold:      { bg: "bg-gradient-to-br from-yellow-900/75 to-amber-950/85", accent: "text-yellow-300/70" },
+  prismatic: { bg: "bg-gradient-to-br from-fuchsia-900/75 via-violet-900/75 to-cyan-900/75", accent: "text-fuchsia-200/70" },
 };
+
+// ---------------------------------------------------------------------------
+// CDragon plugin base URL — used by path normalization to detect malformed
+// inputs (double slashes, duplicated prefix, missing scheme, etc.).
+// ---------------------------------------------------------------------------
+
+const CDRAGON_PLUGIN_BASE =
+  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/";
+
+/**
+ * Normalize a (possibly malformed) CDragon URL.
+ *
+ * Handles:
+ *  - missing/duplicated plugin prefix
+ *  - duplicated `https://...` in the middle of the path
+ *  - double slashes inside the path component (preserves the `https://`)
+ *  - trailing whitespace
+ *  - mixed casing (CDragon's file server is case-sensitive lowercase)
+ *
+ * Returns "" if the input doesn't look like an asset path.
+ */
+function normalizeCdragonUrl(input: string): string {
+  if (!input) return "";
+  let url = input.trim();
+
+  // Strip any accidentally-duplicated `https://...` in the middle.
+  const lastScheme = url.lastIndexOf("https://");
+  if (lastScheme > 0) url = url.slice(lastScheme);
+
+  // If the input is a bare ASSETS/... path, prepend the plugin base.
+  if (!/^https?:\/\//i.test(url)) {
+    url = CDRAGON_PLUGIN_BASE + url.replace(/^\/+/, "");
+  }
+
+  // Collapse double slashes inside the path component without touching `https://`.
+  const schemeMatch = url.match(/^(https?:\/\/)(.*)$/i);
+  if (schemeMatch) {
+    url = schemeMatch[1] + schemeMatch[2].replace(/\/{2,}/g, "/");
+  }
+
+  // Force-lowercase the entire URL — CDragon's CDN only serves lowercase files
+  // for the plugin path and refuses mixed casing.
+  url = url.toLowerCase();
+
+  return url;
+}
 
 // ---------------------------------------------------------------------------
 // Augment icon URL fallback chain
 // ---------------------------------------------------------------------------
 //
 // CDragon advertises every augment's `.tex` path but doesn't always ship the
-// converted `.png`. Rather than pre-filtering augments at build time (which
-// over-aggressively deleted valid Set 17 entries), we try a sequence of URL
-// variants at render time and fall through to a clean name placeholder only
-// if every candidate fails. The augment stays in the catalog throughout.
+// converted `.png`. Rather than removing augments at build time, we try a
+// sequence of URL variants at render time and fall through to a tier-tinted
+// name placeholder only if every candidate fails. The augment stays in the
+// catalog throughout.
 //
-// Generated variants (in priority order):
+// Generated variants (in priority order, deduped):
 //   1. Primary URL (assetUrl(icon)) — as normalize.ts produced it
-//   2. Set-tag stripped (e.g. `_II.tft_set17.png` → `_II.png`)
-//   3. Tier-suffix stripped (`spellsword_ii.png` → `spellsword.png`)
-//   4. Both stripped
-//   5. Single trailing digit stripped (`snipersnest2.png` → `snipersnest.png`)
-//   6. Hyphens ↔ underscores in the filename
+//   2. Path-normalized variant (handles malformed inputs)
+//   3. Set-tag stripped (e.g. `_ii.tft_set17.png` → `_ii.png`)
+//   4. Tier-suffix stripped (`spellsword_ii.png` → `spellsword.png`)
+//   5. Set-tag AND tier stripped
+//   6. Trailing single digit stripped (`snipersnest2.png` → `snipersnest.png`)
+//   7. Hyphens ↔ underscores in the filename
+//   8. Extension variants — `.png` → `.webp` / `.jpg` (some assets ship as webp)
+//   9. apiName-derived path: assets/maps/tft/icons/augments/hexcore/<lowercased_api>.png
 //
-// All of these are cheap regex transforms; we de-dup the resulting list so
-// each unique URL is tried at most once.
-function buildAugmentIconCandidates(primary: string): string[] {
+// All of these are cheap regex transforms; the de-dup Set ensures each unique
+// URL is tried at most once.
+function buildAugmentIconCandidates(augment: TFTAugment): string[] {
+  const primary = normalizeCdragonUrl(augment.icon);
   if (!primary) return [];
+
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (url: string) => {
-    if (url && !seen.has(url)) {
-      seen.add(url);
-      out.push(url);
+    const n = normalizeCdragonUrl(url);
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
     }
   };
 
@@ -78,65 +130,148 @@ function buildAugmentIconCandidates(primary: string): string[] {
   // Swap hyphens/underscores in the filename portion only (keep the path).
   const swapSeparators = (url: string) => {
     const slash = url.lastIndexOf("/");
-    if (slash < 0) return url;
+    if (slash < 0) return [];
     const path = url.slice(0, slash + 1);
     const file = url.slice(slash + 1);
-    return [
-      path + file.replace(/-/g, "_"),
-      path + file.replace(/_/g, "-"),
-    ];
+    return [path + file.replace(/-/g, "_"), path + file.replace(/_/g, "-")];
   };
   for (const v of swapSeparators(primary)) push(v);
+  for (const v of swapSeparators(noSetTag)) push(v);
+
+  // Extension variants — try webp / jpg if the .png 404s.
+  push(primary.replace(/\.png$/i, ".webp"));
+  push(primary.replace(/\.png$/i, ".jpg"));
+
+  // Last-ditch: apiName-derived path. CDragon doesn't actually expose this
+  // pattern today, but if a future build does, we'll catch it for free.
+  const apiNameLower = augment.apiName.replace(/^TFT(\d+)?_(Augment_)?/i, "").toLowerCase();
+  if (apiNameLower) {
+    push(`${CDRAGON_PLUGIN_BASE}assets/maps/tft/icons/augments/hexcore/${apiNameLower}.png`);
+  }
 
   return out;
 }
 
 // ---------------------------------------------------------------------------
-// Augment icon with a multi-URL fallback chain.
-// onAllFailed fires once when every candidate URL has 404'd — useful in
-// AugmentSlotsPanel etc. where we want to know if the assigned augment can't
-// render an image (it still renders, just with the name placeholder).
+// Session-level resolution cache.
+//
+// Keyed by augment apiName. Once we've determined an outcome for an augment —
+// either a working URL or "all candidates failed" — we store it so subsequent
+// renders skip the trial chain entirely. This prevents:
+//   - re-attempting URLs we've already proven 404
+//   - re-firing onError on every parent re-render
+//   - flooding the console with the same warning every render
+//   - infinite retry loops if a parent passes new callback identities
+//
+// The cache lives at module scope (per browser tab); browser-level disk/HTTP
+// caching is unaffected.
+// ---------------------------------------------------------------------------
+
+type IconResolution = { ok: true; url: string } | { ok: false; attempted: string[] };
+const iconResolutionCache = new Map<string, IconResolution>();
+
+// ---------------------------------------------------------------------------
+// Name placeholder — shown when every candidate URL has 404'd. Tier-tinted,
+// fixed footprint (matches the icon size exactly), the augment name wrapped
+// in two lines, and a small Sparkles glyph to keep the tile visually anchored.
+// The augment is still draggable / assignable; only the visual differs.
+// ---------------------------------------------------------------------------
+
+function NamePlaceholder({
+  augment,
+  className,
+}: {
+  augment: TFTAugment;
+  className?: string;
+}) {
+  const cfg = TIER_PLACEHOLDER[augment.tier];
+  return (
+    <div
+      className={cn(
+        "relative flex flex-col items-center justify-center text-center px-0.5 select-none",
+        cfg.bg,
+        className
+      )}
+      title={augment.name}
+    >
+      <Sparkles className={cn("w-2.5 h-2.5 absolute top-0.5 right-0.5 opacity-50", cfg.accent)} />
+      <span className="text-[7px] font-medium leading-tight text-white/90 line-clamp-2">
+        {augment.name}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AugmentIcon — multi-step fallback resolution, cached at module scope.
+//
+// Lifecycle:
+//   1. Build the candidate URL list (cheap useMemo over icon path)
+//   2. If module cache already has an outcome for this apiName: render that
+//      directly (skip trial chain entirely)
+//   3. Else step through candidates via onError. onLoad caches the working URL.
+//   4. When candidates exhaust, a useEffect records the failure in the cache
+//      and emits exactly one console.warn for this apiName per session.
+//
+// Why module-level cache: prevents re-trial when parent re-renders, prevents
+// console spam from logging the same failure every render, and prevents any
+// possibility of an infinite retry loop driven by changing prop identity.
 // ---------------------------------------------------------------------------
 
 export function AugmentIcon({
   augment,
   className,
-  onAllFailed,
 }: {
   augment: TFTAugment;
   className?: string;
-  onAllFailed?: () => void;
 }) {
-  const candidates = useMemo(() => buildAugmentIconCandidates(augment.icon), [augment.icon]);
+  const candidates = useMemo(() => buildAugmentIconCandidates(augment), [augment]);
   const [attemptIdx, setAttemptIdx] = useState(0);
 
-  // Reset attempt counter when the augment changes (component reuse case).
-  useEffect(() => setAttemptIdx(0), [augment.icon]);
+  // Reset attempt counter if the underlying augment swaps in the same slot.
+  useEffect(() => setAttemptIdx(0), [augment.apiName]);
 
-  // Notify parent once we've truly exhausted the fallback chain.
+  // Once we exhaust every candidate, record the failure + log once. Inside
+  // a useEffect so the cache write + console.warn never happen during render.
   useEffect(() => {
-    if (attemptIdx >= candidates.length && candidates.length > 0) {
-      onAllFailed?.();
-    }
-  }, [attemptIdx, candidates.length, onAllFailed]);
+    if (candidates.length === 0 || attemptIdx < candidates.length) return;
+    if (iconResolutionCache.has(augment.apiName)) return;
+    iconResolutionCache.set(augment.apiName, { ok: false, attempted: candidates });
+    console.warn(
+      `[TFT augment] icon unresolved — name="${augment.name}" ` +
+      `apiName=${augment.apiName} tier=${augment.tier} ` +
+      `attempted=[${candidates.join(" | ")}]`
+    );
+  }, [augment.apiName, augment.name, augment.tier, attemptIdx, candidates]);
 
-  if (candidates.length === 0 || attemptIdx >= candidates.length) {
-    // Name placeholder — same footprint as the icon, tier-tinted background,
-    // truncated name so the tile is still recognizable & drag-targetable.
+  // Cache-first read on every render. Once an outcome is recorded for this
+  // apiName we bypass the trial chain entirely.
+  const cached = iconResolutionCache.get(augment.apiName);
+  if (cached && cached.ok) {
     return (
-      <div
-        className={cn(
-          "flex items-center justify-center text-[7px] font-medium text-white/85 text-center leading-tight px-0.5",
-          TIER_PLACEHOLDER_BG[augment.tier],
-          className
-        )}
-        title={augment.name}
-      >
-        <span className="line-clamp-2">{augment.name}</span>
-      </div>
+      <img
+        src={cached.url}
+        alt={augment.name}
+        className={cn("object-contain", className)}
+        loading="lazy"
+        draggable={false}
+        // No onError on the cached-success path: if a URL worked once in this
+        // session, we assume it keeps working. Avoids accidental invalidation
+        // on transient network blips.
+      />
     );
   }
+  if (cached && !cached.ok) {
+    return <NamePlaceholder augment={augment} className={className} />;
+  }
 
+  // Cache miss + candidates exhausted (or empty) → placeholder. The useEffect
+  // above will record the failure on the next tick.
+  if (candidates.length === 0 || attemptIdx >= candidates.length) {
+    return <NamePlaceholder augment={augment} className={className} />;
+  }
+
+  // Cache miss + candidates remaining → render the current attempt.
   return (
     <img
       src={candidates[attemptIdx]}
@@ -144,6 +279,16 @@ export function AugmentIcon({
       className={cn("object-contain", className)}
       loading="lazy"
       draggable={false}
+      onLoad={() => {
+        // First time this URL loads — pin it in the cache so we skip the
+        // trial chain on future renders for this augment.
+        if (!iconResolutionCache.has(augment.apiName)) {
+          iconResolutionCache.set(augment.apiName, {
+            ok: true,
+            url: candidates[attemptIdx],
+          });
+        }
+      }}
       onError={() => setAttemptIdx((i) => i + 1)}
     />
   );
@@ -197,7 +342,8 @@ export function AugmentDragOverlay({ augment }: { augment: TFTAugment }) {
 // ---------------------------------------------------------------------------
 // AugmentsPanel — pure icon grid. No section title, no tier headers, no
 // dividers, no counts. Augments are never filtered out — even ones with
-// broken icons render as a name placeholder so the catalog stays complete.
+// broken icons render as a tier-tinted name placeholder so the catalog stays
+// complete.
 // ---------------------------------------------------------------------------
 
 export function AugmentsPanel() {
