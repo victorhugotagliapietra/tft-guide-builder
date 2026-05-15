@@ -14,7 +14,7 @@ import {
 } from "@/features/board-builder/types";
 import { ReadOnlyBoardGrid } from "@/features/board-builder/ReadOnlyBoardGrid";
 import { TraitsPanel } from "@/features/board-builder/TraitsPanel";
-import { ReadOnlyAugmentRow } from "@/features/board-builder/AugmentSlotsPanel";
+import { ReadOnlyAugmentSlotsPanel } from "@/features/board-builder/AugmentSlotsPanel";
 import { RichTextContent } from "@/features/board-builder/RichTextEditor";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -63,12 +63,29 @@ const DIFFICULTY_LABELS: Record<string, string> = {
  * - `text-foreground/90` (was `text-muted-foreground`) lifts body text to
  *   ~90% white on the dark theme — readable while still softer than headings.
  * - `text-[15px]` is a deliberate small bump from RichTextContent's baked-in
- *   text-sm (14px). Applied via cn() + tailwind-merge in the consumer, so it
- *   overrides the base class cleanly without sprawling type-scale changes.
- * - Used by guide-level description, final-comp notes, and per-step board
- *   notes (which now occupy a wider side column with augments moved above).
+ *   text-sm (14px). cn() + tailwind-merge resolves the conflict cleanly.
+ * - `leading-7` (28px line height) instead of just `leading-relaxed` so long-
+ *   form coaching paragraphs don't feel cramped at the now-wider step note
+ *   container (which spans the trio width below the board).
+ * - `[&_p]:my-3` paragraph spacing override — RichTextContent's base has
+ *   `[&_p]:my-1` which works for a sidebar block but reads as a wall of text
+ *   in the wider container. tailwind-merge picks the later spacing.
+ * - Used by guide-level description, final-comp notes, and per-step notes.
  */
-const NOTES_TEXT_CLASS = "text-foreground/90 leading-relaxed text-[15px]";
+const NOTES_TEXT_CLASS =
+  "text-foreground/90 text-[15px] leading-7 [&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0";
+
+/**
+ * Approximate width of the Traits | Board | Augments trio inside an
+ * expanded step. The notes block below the trio uses this as its
+ * `maxWidth` so the two visually align — notes feel like a continuation
+ * of the board section instead of a free-floating block.
+ *
+ * Derived as: TraitsPanel (208px) + gap (12px) + HEX_CONTAINER_W (~780px)
+ * + gap (12px) + AugmentSlotsPanel (150px) = 1162px, padded to 1180.
+ * Hand-tuned rather than computed so layout regressions are easier to spot.
+ */
+const STEP_CONTENT_MAX_WIDTH = 1180;
 
 // ---------------------------------------------------------------------------
 // Read-only step card
@@ -165,50 +182,55 @@ function ReadOnlyStepCard({
         </Button>
       </div>
 
-      {/* Expanded content. Layout pass 2 (viewer-only):
-            Row 1 — augments strip, centered, full width above the board
-            Row 2 — Traits panel | Board | Notes (in that order)
-          The augments row is now horizontal (`ReadOnlyAugmentRow`) so it
-          consumes vertical space instead of a chunk of the lateral column.
-          That freed-up width is given to the notes column on the right,
-          which significantly reduces internal scrolling for long boards.
-          The board itself stays at its natural width (HEX_CONTAINER_W); the
-          flex row centers the trio so the board reads as the visual focus
-          even when notes are long. */}
+      {/* Expanded content. Layout pass 3 (viewer-only):
+            Row 1 — Traits | Board | Augments (flanked trio, matches editor)
+            Row 2 — Notes block BELOW, spanning the trio's full width
+          Both rows are constrained to ~1180px and centered, so the trio
+          stays balanced and the notes feel like a continuation of the
+          board section rather than a sidebar.
+          STEP_CONTENT_MAX_WIDTH is the approximate trio width:
+            TraitsPanel (w-52 = 208px)
+            + gap-3 (12px)
+            + Board (HEX_CONTAINER_W ≈ 780px)
+            + gap-3 (12px)
+            + AugmentSlotsPanel (2×72 + 6 gap = 150px)
+            ≈ 1162px → padded to 1180px for breathing room.
+          */}
       {expanded && (
-        <div className="p-4 space-y-3">
+        <div className="p-4">
           {unitCount === 0 ? (
             <p className="text-sm text-foreground/70 italic">
               No units on this board.
             </p>
           ) : (
-            <>
-              <ReadOnlyAugmentRow slots={augments} />
-
-              <div className="flex flex-wrap items-start justify-center gap-4 overflow-x-auto">
+            <div
+              className="mx-auto space-y-4"
+              style={{ maxWidth: STEP_CONTENT_MAX_WIDTH }}
+            >
+              {/* Trio: Traits | Board | Augments. flex-wrap + justify-center
+                  so the row stays centered when it fits and degrades to a
+                  vertical stack on narrow viewports. */}
+              <div className="flex flex-wrap items-start justify-center gap-3 overflow-x-auto">
                 <TraitsPanel units={step.units} />
                 <div className="shrink-0 rounded-lg">
                   <ReadOnlyBoardGrid units={step.units} />
                 </div>
-                {step.description && (
-                  <div
-                    className={cn(
-                      "shrink-0 rounded-lg border border-border/40 bg-muted/15",
-                      // Wider footprint than the previous side column
-                      // (200–300px) — augments no longer share this space,
-                      // so notes can breathe. Padding bumped to p-4 for the
-                      // larger body text.
-                      "min-w-[300px] max-w-[420px] p-4"
-                    )}
-                  >
-                    <RichTextContent
-                      html={step.description}
-                      className={NOTES_TEXT_CLASS}
-                    />
-                  </div>
-                )}
+                <ReadOnlyAugmentSlotsPanel slots={augments} />
               </div>
-            </>
+
+              {/* Notes BELOW the board, spanning the trio's full width.
+                  Padding bumped (px-6 py-5) for the larger text + line
+                  height; the rounded card visually attaches to the board
+                  section as a continuation rather than a sidebar. */}
+              {step.description && (
+                <div className="rounded-lg border border-border/40 bg-muted/15 px-6 py-5">
+                  <RichTextContent
+                    html={step.description}
+                    className={NOTES_TEXT_CLASS}
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
