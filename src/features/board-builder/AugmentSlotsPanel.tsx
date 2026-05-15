@@ -170,6 +170,72 @@ export function ReadOnlyAugmentSlotsPanel({ slots }: { slots: AugmentSlots }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// ReadOnlyAugmentRow — single horizontal strip used by the public guide
+// viewer. Renders only the slots that have an augment assigned (empty slots
+// are skipped entirely so the strip stays compact), each as an icon tile
+// plus the augment name beneath. Uses the same AugmentIcon + tier-ring
+// vocabulary as the editor so visuals stay consistent.
+//
+// Behavior:
+//   - flex-nowrap + overflow-x-auto: the row stays on a single line as the
+//     spec requires; if the viewport is too narrow to host all assigned
+//     augments + names, the row scrolls horizontally instead of wrapping.
+//   - justify-center: groups of augments that fit comfortably center over
+//     the board below; only longer strips that exceed the container width
+//     fall back to a left-anchored scroll position.
+//   - Returns null when no slots are assigned — keeps the surrounding
+//     vertical rhythm tight for guides that don't use augments.
+// ---------------------------------------------------------------------------
+
+export function ReadOnlyAugmentRow({ slots }: { slots: AugmentSlots }) {
+  const { augmentMap } = useTFTData();
+  const assigned: { apiName: string; index: number }[] = [];
+  for (let i = 0; i < slots.length; i++) {
+    const api = slots[i];
+    if (api) assigned.push({ apiName: api, index: i });
+  }
+  if (assigned.length === 0) return null;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-nowrap items-start justify-center gap-3 px-2 py-1",
+        "overflow-x-auto",
+        "[&::-webkit-scrollbar]:h-1",
+        "[&::-webkit-scrollbar-track]:bg-transparent",
+        "[&::-webkit-scrollbar-thumb]:rounded-full",
+        "[&::-webkit-scrollbar-thumb]:bg-white/10"
+      )}
+      aria-label="Augments used in this board step"
+    >
+      {assigned.map(({ apiName, index }) => {
+        const augment = augmentMap.get(apiName);
+        if (!augment) return null;
+        return (
+          <div
+            key={index}
+            className="flex flex-col items-center gap-1 w-20 shrink-0"
+            title={augment.name}
+          >
+            <div
+              className={cn(
+                "w-12 h-12 rounded-md overflow-hidden ring-2",
+                TIER_RING[augment.tier]
+              )}
+            >
+              <AugmentSlotIcon augment={augment} />
+            </div>
+            <span className="text-[10px] leading-tight text-center text-foreground/85 line-clamp-2">
+              {augment.name}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
   // 2-column grid (rows derived from AUGMENT_SLOT_COUNT). Title sits above the
   // grid and is center-aligned across the grid's full width — visually it lands

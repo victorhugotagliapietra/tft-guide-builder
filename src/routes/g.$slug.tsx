@@ -14,7 +14,7 @@ import {
 } from "@/features/board-builder/types";
 import { ReadOnlyBoardGrid } from "@/features/board-builder/ReadOnlyBoardGrid";
 import { TraitsPanel } from "@/features/board-builder/TraitsPanel";
-import { ReadOnlyAugmentSlotsPanel } from "@/features/board-builder/AugmentSlotsPanel";
+import { ReadOnlyAugmentRow } from "@/features/board-builder/AugmentSlotsPanel";
 import { RichTextContent } from "@/features/board-builder/RichTextEditor";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -58,15 +58,17 @@ const DIFFICULTY_LABELS: Record<string, string> = {
 };
 
 /**
- * Shared class for rich-text content displayed on this page. We deliberately
- * stay away from `text-muted-foreground` (low contrast on the dark theme) and
- * use `text-foreground/90` instead — readable for body copy while still a
- * touch softer than headings. Applied to:
- *   - guide-level description
- *   - final-comp notes section
- *   - per-step board notes (now in the side column)
+ * Shared class for rich-text content displayed on this page.
+ *
+ * - `text-foreground/90` (was `text-muted-foreground`) lifts body text to
+ *   ~90% white on the dark theme — readable while still softer than headings.
+ * - `text-[15px]` is a deliberate small bump from RichTextContent's baked-in
+ *   text-sm (14px). Applied via cn() + tailwind-merge in the consumer, so it
+ *   overrides the base class cleanly without sprawling type-scale changes.
+ * - Used by guide-level description, final-comp notes, and per-step board
+ *   notes (which now occupy a wider side column with augments moved above).
  */
-const NOTES_TEXT_CLASS = "text-foreground/90 leading-relaxed";
+const NOTES_TEXT_CLASS = "text-foreground/90 leading-relaxed text-[15px]";
 
 // ---------------------------------------------------------------------------
 // Read-only step card
@@ -163,26 +165,42 @@ function ReadOnlyStepCard({
         </Button>
       </div>
 
-      {/* Expanded content — 3-column flex matching the editor:
-            Traits panel | Board | (Augments + Notes vertical stack)
-          Wraps on narrow viewports via flex-wrap + overflow-x-auto so the
-          desktop-first layout degrades gracefully. */}
+      {/* Expanded content. Layout pass 2 (viewer-only):
+            Row 1 — augments strip, centered, full width above the board
+            Row 2 — Traits panel | Board | Notes (in that order)
+          The augments row is now horizontal (`ReadOnlyAugmentRow`) so it
+          consumes vertical space instead of a chunk of the lateral column.
+          That freed-up width is given to the notes column on the right,
+          which significantly reduces internal scrolling for long boards.
+          The board itself stays at its natural width (HEX_CONTAINER_W); the
+          flex row centers the trio so the board reads as the visual focus
+          even when notes are long. */}
       {expanded && (
-        <div className="p-4">
+        <div className="p-4 space-y-3">
           {unitCount === 0 ? (
             <p className="text-sm text-foreground/70 italic">
               No units on this board.
             </p>
           ) : (
-            <div className="flex flex-wrap items-start justify-center gap-3 overflow-x-auto">
-              <TraitsPanel units={step.units} />
-              <div className="shrink-0 rounded-lg">
-                <ReadOnlyBoardGrid units={step.units} />
-              </div>
-              <div className="flex flex-col gap-3 items-stretch min-w-[200px] max-w-[300px]">
-                <ReadOnlyAugmentSlotsPanel slots={augments} />
+            <>
+              <ReadOnlyAugmentRow slots={augments} />
+
+              <div className="flex flex-wrap items-start justify-center gap-4 overflow-x-auto">
+                <TraitsPanel units={step.units} />
+                <div className="shrink-0 rounded-lg">
+                  <ReadOnlyBoardGrid units={step.units} />
+                </div>
                 {step.description && (
-                  <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
+                  <div
+                    className={cn(
+                      "shrink-0 rounded-lg border border-border/40 bg-muted/15",
+                      // Wider footprint than the previous side column
+                      // (200–300px) — augments no longer share this space,
+                      // so notes can breathe. Padding bumped to p-4 for the
+                      // larger body text.
+                      "min-w-[300px] max-w-[420px] p-4"
+                    )}
+                  >
                     <RichTextContent
                       html={step.description}
                       className={NOTES_TEXT_CLASS}
@@ -190,7 +208,7 @@ function ReadOnlyStepCard({
                   </div>
                 )}
               </div>
-            </div>
+            </>
           )}
         </div>
       )}
