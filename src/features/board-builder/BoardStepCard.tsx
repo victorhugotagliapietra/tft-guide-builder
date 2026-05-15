@@ -557,7 +557,13 @@ export function BoardStepCard({
   const [description, setDescription] = useState(step.description);
   // Local input text for level so the user can clear the field while typing
   const [levelText, setLevelText] = useState(String(step.level));
-  const { championMap, augmentMap, items: tftItems, setNumber } = useTFTData();
+  const {
+    championMap,
+    augmentMap,
+    items: tftItems,
+    setNumber,
+    plannerCodeMap,
+  } = useTFTData();
 
   const itemMap = useMemo(
     () => new Map(tftItems.map((i) => [i.apiName, i])),
@@ -894,7 +900,7 @@ export function BoardStepCard({
   }
 
   function handleCopyPlannerCode() {
-    const result = generatePlannerCode(step.units, setNumber);
+    const result = generatePlannerCode(step.units, setNumber, plannerCodeMap);
     if (!result.ok) { toast.error(result.error); return; }
     navigator.clipboard.writeText(result.code).then(
       () => toast.success("Planner code copied!"),

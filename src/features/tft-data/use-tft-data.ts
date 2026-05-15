@@ -5,6 +5,50 @@ import { normalizeSetData, type RawTFTData } from "./normalize";
 import type { TFTSetData, TFTChampion, TFTTrait, TFTAugment } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
+// CDragon's team-planner manifest. Each entry under TFTSet17 carries a
+// `character_id` (apiName) plus a `team_planner_code` integer — the byte
+// value the TFT in-game team planner expects for that champion. We need
+// these to emit real planner codes that paste correctly into the client.
+const TFT_TEAM_PLANNER_URL =
+  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/tftchampions-teamplanner.json";
+
+type TeamPlannerEntry = { character_id?: string; team_planner_code?: number };
+type TeamPlannerJson = Record<string, TeamPlannerEntry[]>;
+
+/**
+ * Fetch CDragon's team-planner manifest and build an apiName → byte-code map
+ * for the current set. Non-fatal: if the request fails the map is empty and
+ * planner-code generation surfaces an explicit error to the user instead of
+ * producing a broken code.
+ */
+async function fetchTeamPlannerMap(setNumber: number): Promise<Record<string, number>> {
+  try {
+    const res = await fetch(TFT_TEAM_PLANNER_URL);
+    if (!res.ok) {
+      console.warn(`[TFT] Team-planner fetch failed: ${res.status}`);
+      return {};
+    }
+    const json = (await res.json()) as TeamPlannerJson;
+    const key = `TFTSet${setNumber}`;
+    const entries = json[key];
+    if (!Array.isArray(entries)) {
+      console.warn(`[TFT] Team-planner: no ${key} entries found`);
+      return {};
+    }
+    const out: Record<string, number> = {};
+    for (const e of entries) {
+      if (typeof e.character_id === "string" && typeof e.team_planner_code === "number") {
+        out[e.character_id] = e.team_planner_code;
+      }
+    }
+    console.info(`[TFT] Team-planner map: ${Object.keys(out).length} entries for ${key}`);
+    return out;
+  } catch (err) {
+    console.warn(`[TFT] Team-planner fetch threw:`, err);
+    return {};
+  }
+}
+
 // Training dummies always available at cost 0 (excluded from normal filters).
 //
 // The Training Dummy uses a LOCAL static asset committed to `public/tft-data/`.
@@ -79,16 +123,23 @@ async function fetchDDragonAugmentMap(): Promise<Record<string, string>> {
   }
 }
 
+// Pinned to the current set we render — must match normalize.ts CURRENT_SET.
+const CURRENT_SET = 17;
+
 async function fetchTFTData(): Promise<TFTSetData> {
-  // Run CDragon and DDragon requests in parallel. CDragon is required;
-  // DDragon is best-effort and never blocks the load.
-  const [cdragonRes, ddragonMap] = await Promise.all([
+  // Run CDragon (required), DDragon augment manifest (best-effort fallback),
+  // and team-planner manifest (required for valid planner codes) in parallel.
+  const [cdragonRes, ddragonMap, teamPlannerMap] = await Promise.all([
     fetch(TFT_DATA_URL),
     fetchDDragonAugmentMap(),
+    fetchTeamPlannerMap(CURRENT_SET),
   ]);
   if (!cdragonRes.ok) throw new Error(`CDragon fetch failed: ${cdragonRes.status}`);
   const raw: RawTFTData = await cdragonRes.json();
-  return normalizeSetData(raw, { ddragonAugments: ddragonMap });
+  return normalizeSetData(raw, {
+    ddragonAugments: ddragonMap,
+    teamPlannerCodes: teamPlannerMap,
+  });
 }
 
 /**
@@ -133,6 +184,19 @@ export function useTFTData() {
     [champions]
   );
 
+  // Champion-apiName → team-planner byte code map. Built from the runtime
+  // team-planner fetch (attached as `plannerId` on each champion during
+  // normalization). Used by planner-code.ts to emit valid Riot codes; empty
+  // map means the export will report an explicit error rather than emit a
+  // broken code.
+  const plannerCodeMap = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const c of champions) {
+      if (typeof c.plannerId === "number") out.set(c.apiName, c.plannerId);
+    }
+    return out;
+  }, [champions]);
+
   const traits: TFTTrait[] = query.data?.traits ?? [];
 
   const traitMap = useMemo(
@@ -161,13 +225,14 @@ export function useTFTData() {
     ...query,
     champions,
     championMap,
+    plannerCodeMap,
     items: query.data?.items ?? [],
     traits,
     traitMap,
     augments,
     augmentMap,
     augmentsByTier,
-    setNumber: query.data?.setNumber ?? 17,
+    setNumber: query.data?.setNumber ?? CURRENT_SET,
     setName: query.data?.setName ?? "",
     isUsingMockData: !query.data,
   };

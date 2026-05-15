@@ -629,6 +629,14 @@ export type NormalizeOptions = {
    * use-tft-data.ts for the fetcher.
    */
   ddragonAugments?: Record<string, string>;
+  /**
+   * CDragon's `tftchampions-teamplanner.json` mapped to a per-apiName byte
+   * code. When present, each champion's `plannerId` is populated; required
+   * by planner-code.ts to emit valid TFT in-game team-planner codes. The
+   * map is best-effort — missing entries surface as user-visible errors at
+   * export time rather than corrupting the code.
+   */
+  teamPlannerCodes?: Record<string, number>;
 };
 
 export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): TFTSetData {
@@ -676,6 +684,11 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
         console.warn(`[TFT] No icon path for ${c.apiName} (${c.name})`);
       }
 
+      // Attach team-planner byte code when available. Champions without an
+      // entry (rare — usually non-playable NPCs that slipped through earlier
+      // filters) won't be encodable into planner codes; planner-code.ts
+      // skips them with a warning at export time.
+      const plannerId = opts.teamPlannerCodes?.[c.apiName];
       return {
         apiName: c.apiName,
         characterName: c.characterName ?? c.apiName,
@@ -685,11 +698,14 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
         squareIconPath: iconPath,
         iconUrl,
         fallbackIconUrl,
+        ...(typeof plannerId === "number" ? { plannerId } : {}),
       };
     });
 
+  const withPlanner = champions.filter((c) => typeof c.plannerId === "number").length;
   console.info(
-    `[TFT] Set ${CURRENT_SET}: ${champions.length} champions loaded, ${skipped} skipped`
+    `[TFT] Set ${CURRENT_SET}: ${champions.length} champions loaded, ${skipped} skipped, ` +
+    `planner-code coverage ${withPlanner}/${champions.length}`
   );
 
   // Build a set of trait apiNames that have a corresponding emblem item.
