@@ -5,10 +5,11 @@ import { normalizeSetData, type RawTFTData } from "./normalize";
 import type { TFTSetData, TFTChampion, TFTTrait, TFTAugment } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
-// CDragon's team-planner manifest. Each entry under TFTSet17 carries a
-// `character_id` (apiName) plus a `team_planner_code` integer — the byte
-// value the TFT in-game team planner expects for that champion. We need
-// these to emit real planner codes that paste correctly into the client.
+// CDragon's team-planner manifest. The TFT in-game team-planner code uses
+// each champion's 1-indexed position in the ALPHABETICALLY-SORTED list of
+// `character_id` values for the current set (NOT the `team_planner_code`
+// field, which turns out to be a different per-set integer ID we don't need).
+// Reference: https://gist.github.com/xrr2016/22fa6e92278a2481f9026f6456b0afa4
 const TFT_TEAM_PLANNER_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/tftchampions-teamplanner.json";
 
@@ -16,10 +17,18 @@ type TeamPlannerEntry = { character_id?: string; team_planner_code?: number };
 type TeamPlannerJson = Record<string, TeamPlannerEntry[]>;
 
 /**
- * Fetch CDragon's team-planner manifest and build an apiName → byte-code map
- * for the current set. Non-fatal: if the request fails the map is empty and
- * planner-code generation surfaces an explicit error to the user instead of
- * producing a broken code.
+ * Fetch CDragon's team-planner manifest and build an apiName → planner-byte
+ * map for the current set. The planner byte is the champion's 1-indexed
+ * position in the alphabetically-sorted `character_id` list — the exact
+ * encoding scheme the TFT client expects in v01 team-planner codes.
+ *
+ * Sort is over the FULL set's entries (including NPC / "Apex" units like
+ * `TFT17_Enemy_Aatrox`) because Riot's own encoder uses the canonical
+ * team-planner JSON ordering. Filtering at the export stage (see
+ * planner-code.ts) handles helper / training units appropriately.
+ *
+ * Non-fatal: if the fetch fails the map is empty and the encoder surfaces
+ * an explicit "data not loaded" error instead of producing a broken code.
  */
 async function fetchTeamPlannerMap(setNumber: number): Promise<Record<string, number>> {
   try {
@@ -35,13 +44,25 @@ async function fetchTeamPlannerMap(setNumber: number): Promise<Record<string, nu
       console.warn(`[TFT] Team-planner: no ${key} entries found`);
       return {};
     }
+
+    // 1-indexed alphabetic sort. Keep all valid character_id entries — the
+    // TFT client's encoder sorts the entire set, not a filtered subset.
+    const characterIds = entries
+      .map((e) => e.character_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .sort();
+
     const out: Record<string, number> = {};
-    for (const e of entries) {
-      if (typeof e.character_id === "string" && typeof e.team_planner_code === "number") {
-        out[e.character_id] = e.team_planner_code;
-      }
+    for (let i = 0; i < characterIds.length; i++) {
+      // 1-indexed per the team-planner code spec; index 0 (byte 0x00) is
+      // the empty-slot sentinel.
+      out[characterIds[i]] = i + 1;
     }
-    console.info(`[TFT] Team-planner map: ${Object.keys(out).length} entries for ${key}`);
+
+    console.info(
+      `[TFT] Team-planner alphabetic index: ${characterIds.length} entries for ${key} ` +
+      `(${characterIds[0]}=1 … ${characterIds[characterIds.length - 1]}=${characterIds.length})`
+    );
     return out;
   } catch (err) {
     console.warn(`[TFT] Team-planner fetch threw:`, err);
