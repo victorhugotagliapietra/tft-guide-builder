@@ -110,6 +110,66 @@ type Props = {
   isDraggingAugment: boolean;
 };
 
+// ---------------------------------------------------------------------------
+// ReadOnlyAugmentSlotsPanel — view-only sibling used by the public guide
+// route. Renders the SAME 2-col grid layout, tier-ring styling, and
+// AugmentIcon resolution as the editable panel, but skips every dnd-kit
+// hook so it can mount outside a DndContext. Empty slots are dimmed (not
+// fully hidden) so the panel still reads as "this guide step has N of 6
+// augments planned".
+// ---------------------------------------------------------------------------
+
+export function ReadOnlyAugmentSlotsPanel({ slots }: { slots: AugmentSlots }) {
+  const { augmentMap } = useTFTData();
+  // Hide the whole panel when no augments are assigned — keeps the viewer
+  // visually clean for guides that don't use the augment system.
+  const hasAny = slots.some((s) => !!s);
+  if (!hasAny) return null;
+
+  return (
+    <div className="shrink-0 flex flex-col gap-1.5 self-start">
+      <span className="text-[10px] font-semibold text-foreground/70 tracking-wider uppercase text-center">
+        Augments
+      </span>
+      <div className="grid grid-cols-2 gap-1.5">
+        {Array.from({ length: AUGMENT_SLOT_COUNT }, (_, i) => {
+          const apiName = slots[i] ?? null;
+          const augment = apiName ? augmentMap.get(apiName) : null;
+          return (
+            <div
+              key={i}
+              className={cn(
+                "relative w-[72px] h-[72px] rounded-lg",
+                // Empty slot in read-only mode: faint outline, no dashed
+                // border (less visual noise than the editor's "this is a
+                // drop target" treatment).
+                !augment && "border border-white/[0.06] bg-background/20"
+              )}
+              title={augment?.name ?? ""}
+              aria-label={augment ? augment.name : `Empty augment slot ${i + 1}`}
+            >
+              {augment ? (
+                <div
+                  className={cn(
+                    "absolute inset-0 rounded-lg overflow-hidden ring-2",
+                    TIER_RING[augment.tier]
+                  )}
+                >
+                  <AugmentSlotIcon augment={augment} />
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-muted-foreground/15" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
   // 2-column grid (rows derived from AUGMENT_SLOT_COUNT). Title sits above the
   // grid and is center-aligned across the grid's full width — visually it lands

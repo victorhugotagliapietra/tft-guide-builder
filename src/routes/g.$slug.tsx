@@ -6,8 +6,15 @@ import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode } from "@/features/tft-data/planner-code";
-import { boardStepSchema, STEP_TYPE_LABELS, type BoardStep } from "@/features/board-builder/types";
+import {
+  boardStepSchema,
+  STEP_TYPE_LABELS,
+  emptyAugmentSlots,
+  type BoardStep,
+} from "@/features/board-builder/types";
 import { ReadOnlyBoardGrid } from "@/features/board-builder/ReadOnlyBoardGrid";
+import { TraitsPanel } from "@/features/board-builder/TraitsPanel";
+import { ReadOnlyAugmentSlotsPanel } from "@/features/board-builder/AugmentSlotsPanel";
 import { RichTextContent } from "@/features/board-builder/RichTextEditor";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -50,8 +57,27 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   hard: "Hard",
 };
 
+/**
+ * Shared class for rich-text content displayed on this page. We deliberately
+ * stay away from `text-muted-foreground` (low contrast on the dark theme) and
+ * use `text-foreground/90` instead — readable for body copy while still a
+ * touch softer than headings. Applied to:
+ *   - guide-level description
+ *   - final-comp notes section
+ *   - per-step board notes (now in the side column)
+ */
+const NOTES_TEXT_CLASS = "text-foreground/90 leading-relaxed";
+
 // ---------------------------------------------------------------------------
-// Step card (read-only, collapsible)
+// Read-only step card
+//
+// Layout shifts based on `expanded`:
+//   - Collapsed: a single-row title bar with chevron, badge, level, and a
+//     Copy-Code button on the right (always visible — promoted out of the
+//     old footer per spec).
+//   - Expanded: a 3-column flex (Traits | Board | Augments + Notes), mirroring
+//     the editor's flanked-board layout. Reused components: TraitsPanel,
+//     ReadOnlyBoardGrid, ReadOnlyAugmentSlotsPanel, RichTextContent.
 // ---------------------------------------------------------------------------
 
 function ReadOnlyStepCard({
@@ -65,88 +91,107 @@ function ReadOnlyStepCard({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
-  function handleCopyPlannerCode() {
+  function handleCopyPlannerCode(e: React.MouseEvent) {
+    e.stopPropagation(); // keep the toggle from firing when clicking inside the header
     const result = generatePlannerCode(step.units, setNumber);
     if (!result.ok) {
       toast.error(result.error);
       return;
     }
     navigator.clipboard.writeText(result.code).then(
-      () => toast.success("Planner code copied!"),
+      () => toast.success("Board code copied!"),
       () => toast.error("Failed to write to clipboard.")
     );
   }
 
   const unitCount = step.units.length;
+  // Defensive: older guides saved before the augments field existed get an
+  // empty slot array via the zod default; this just guards against shape
+  // mismatch if the schema changes again.
+  const augments = Array.isArray(step.augments) ? step.augments : emptyAugmentSlots();
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      {/* Header */}
-      <button
-        type="button"
+    <div className="border border-border rounded-xl overflow-hidden bg-card/50">
+      {/* Header — chevron + title + meta on the left, copy-code on the right */}
+      <div
         className={cn(
-          "w-full flex items-center gap-2 px-4 py-3 bg-card text-left hover:bg-muted/30 transition-colors select-none",
+          "flex items-center gap-2 px-4 py-3 select-none transition-colors hover:bg-muted/30",
           expanded && "border-b border-border"
         )}
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
       >
-        <span className="shrink-0 text-muted-foreground">
-          {expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-        </span>
-        <span className="font-medium text-sm flex-1 truncate">{step.title}</span>
-        <Badge variant="outline" className="text-xs shrink-0">
-          {STEP_TYPE_LABELS[step.stepType]}
-        </Badge>
-        <span className="text-xs text-muted-foreground shrink-0">Lv{step.level}</span>
-        {!expanded && unitCount > 0 && (
-          <span className="text-xs text-muted-foreground shrink-0">
-            {unitCount} unit{unitCount !== 1 ? "s" : ""}
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
+        >
+          <span className="shrink-0 text-muted-foreground">
+            {expanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
           </span>
-        )}
-      </button>
-
-      {/* Content */}
-      {expanded && (
-        <div className="p-4 space-y-4 bg-card">
-          {step.description && (
-            <RichTextContent
-              html={step.description}
-              className="text-muted-foreground"
-            />
-          )}
-
-          {unitCount > 0 ? (
-            <ReadOnlyBoardGrid units={step.units} />
-          ) : (
-            <p className="text-sm text-muted-foreground italic">No units on this board.</p>
-          )}
-
-          <div className="flex items-center justify-between pt-1 border-t border-border/50">
-            <span className="text-xs text-muted-foreground">
+          <span className="font-medium text-base flex-1 truncate text-foreground">
+            {step.title}
+          </span>
+          <Badge variant="outline" className="text-xs shrink-0">
+            {STEP_TYPE_LABELS[step.stepType]}
+          </Badge>
+          <span className="text-xs text-foreground/70 shrink-0">Lv{step.level}</span>
+          {!expanded && unitCount > 0 && (
+            <span className="text-xs text-foreground/60 shrink-0">
               {unitCount} unit{unitCount !== 1 ? "s" : ""}
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-xs"
-              disabled={unitCount === 0}
-              onClick={handleCopyPlannerCode}
-              title={
-                unitCount === 0
-                  ? "No champions to encode"
-                  : "Copy planner code to clipboard"
-              }
-            >
-              <LinkIcon className="h-3.5 w-3.5" />
-              Copy planner code
-            </Button>
-          </div>
+          )}
+        </button>
+
+        {/* Copy Board Code — promoted from the old expanded footer to the
+            step header so it's always reachable, regardless of expand state.
+            Disabled when there are no units to encode. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 h-7 gap-1.5 text-xs"
+          disabled={unitCount === 0}
+          onClick={handleCopyPlannerCode}
+          title={unitCount === 0 ? "No champions to encode" : "Copy planner code"}
+        >
+          <LinkIcon className="h-3.5 w-3.5" />
+          Copy board code
+        </Button>
+      </div>
+
+      {/* Expanded content — 3-column flex matching the editor:
+            Traits panel | Board | (Augments + Notes vertical stack)
+          Wraps on narrow viewports via flex-wrap + overflow-x-auto so the
+          desktop-first layout degrades gracefully. */}
+      {expanded && (
+        <div className="p-4">
+          {unitCount === 0 ? (
+            <p className="text-sm text-foreground/70 italic">
+              No units on this board.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-start justify-center gap-3 overflow-x-auto">
+              <TraitsPanel units={step.units} />
+              <div className="shrink-0 rounded-lg">
+                <ReadOnlyBoardGrid units={step.units} />
+              </div>
+              <div className="flex flex-col gap-3 items-stretch min-w-[200px] max-w-[300px]">
+                <ReadOnlyAugmentSlotsPanel slots={augments} />
+                {step.description && (
+                  <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
+                    <RichTextContent
+                      html={step.description}
+                      className={NOTES_TEXT_CLASS}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -249,7 +294,11 @@ function PublicGuide() {
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
 
-      <main className="flex-1 mx-auto max-w-3xl w-full px-4 py-10 space-y-8">
+      {/* Match the creator page's outer width (max-w-[90rem]) so the guide
+          view feels equally immersive instead of constrained to a narrow
+          reading column. Body padding stays the same; only the upper bound
+          on width changes. */}
+      <main className="flex-1 mx-auto max-w-[90rem] w-full px-4 py-10 space-y-8">
         {/* Guide header */}
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
@@ -283,12 +332,11 @@ function PublicGuide() {
               Copy link
             </Button>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight">{guide.title}</h1>
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
+            {guide.title}
+          </h1>
           {guide.description && (
-            <RichTextContent
-              html={guide.description}
-              className="text-muted-foreground leading-relaxed"
-            />
+            <RichTextContent html={guide.description} className={NOTES_TEXT_CLASS} />
           )}
         </header>
 
@@ -298,10 +346,10 @@ function PublicGuide() {
             <h2 id="notes-heading" className="text-lg font-semibold">
               Final comp notes
             </h2>
-            <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+            <div className="rounded-lg border border-border bg-muted/15 px-4 py-3">
               <RichTextContent
                 html={guide.final_comp_notes}
-                className="text-muted-foreground leading-relaxed"
+                className={NOTES_TEXT_CLASS}
               />
             </div>
           </section>
@@ -312,14 +360,14 @@ function PublicGuide() {
           <h2 id="steps-heading" className="text-lg font-semibold">
             Board steps
             {guide.steps.length > 0 && (
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
+              <span className="ml-2 text-sm font-normal text-foreground/60">
                 ({guide.steps.length})
               </span>
             )}
           </h2>
 
           {guide.steps.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
+            <p className="text-sm text-foreground/70 italic">
               No board steps have been added to this guide.
             </p>
           ) : (
