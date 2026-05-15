@@ -1,42 +1,78 @@
 /**
- * TFT in-game team-planner code codec.
+ * TFT in-game team-planner code codec — compact v02 format.
  *
- * Emits codes that paste DIRECTLY into the TFT client's Team Planner UI.
- * This is the actual Riot format, not a custom JSON+base64 codec — the
- * previous implementation produced strings the in-game planner couldn't
- * read.
+ * Emits codes that paste into MetaTFT / tactics.tools / the TFT client's
+ * Team Planner UI.
  *
  * ───────────────────────────────────────────────────────────────────────────
- * FORMAT
+ * WIRE FORMAT (verified against a known-working MetaTFT export)
  * ───────────────────────────────────────────────────────────────────────────
  *
- *   02 + <28 × 2 hex chars> + TFTSet<N>
+ *   02 + <10 × 3 hex chars> + TFTSet<N>
  *
- *   - "02" is the format version byte (constant for Set 9+)
- *   - 28 bytes of board state, one per hex position (row * 7 + col, 0–27).
- *     Each byte is the champion's `team_planner_code` from CDragon's
- *     `tftchampions-teamplanner.json` (Set 17 codes range 0–104, fit in
- *     1 byte). Empty positions are 0x00.
- *   - "TFTSet<N>" is a literal suffix; N is the set number. The TFT client
- *     uses this suffix to pick the right per-set champion lookup table.
+ *   - "02"          version prefix (constant for Set 9+).
+ *   - 10 slots      one per max team-size unit at level 10. Each slot is
+ *                   3 hex chars = 12 bits, encoded as:
  *
- * Example (1 unit at position 3, code 0x12 = 18 → Jinx, Set 17):
+ *                       (position << 7) | championCode
  *
- *   02000000120000000000000000000000000000000000000000000000TFTSet17
+ *                     - position     : 5 bits, 0–27 (row * 7 + col)
+ *                     - championCode : 7 bits, 1–127 (team_planner_code
+ *                                      from CDragon's
+ *                                      tftchampions-teamplanner.json)
  *
- * Total length for Set 17: 2 + 56 + 8 = 66 chars.
+ *                   Empty slots are 0x000. Code 0 is reserved as the
+ *                   empty-slot sentinel, so champions whose
+ *                   team_planner_code is 0 (e.g. the Set 17 enemy-Aatrox
+ *                   NPC) cannot be encoded — they're skipped at export.
+ *
+ *   - "TFTSet<N>"   literal set suffix; the client picks the right per-set
+ *                   champion lookup table from this.
+ *
+ * Total length for Set 17: 2 + 30 + 8 = 40 chars.
  *
  * ───────────────────────────────────────────────────────────────────────────
- * WHAT IS LOST
+ * KNOWN-GOOD EXAMPLE
  * ───────────────────────────────────────────────────────────────────────────
  *
- * The in-game format encodes ONLY champion positions. It does NOT preserve
- * star level, equipped items, or augments. That's a limitation of the TFT
- * client, not this implementation. The original `BoardUnit` data stays
- * intact in the guide; the planner code is just one export view of it.
+ * MetaTFT-exported code:
+ *   0203102d01e02204f024025045000000TFTSet17
  *
- * For richer roundtripping (full unit state across sessions), use the
- * existing JSONB serialization that backs `board_steps`.
+ * Decodes to 8 Set 17 champions (positions all 0 because MetaTFT exports
+ * as a position-less team list — the TFT client places them on import):
+ *
+ *   Gragas (49) Pyke (45) Maokai (30) Karma (34)
+ *   TahmKench (79) Urgot (36) Pantheon (37) Cho'Gath (69)
+ *
+ * Our encoder preserves actual positions in the top 5 bits when units
+ * are placed on specific hexes — backward-compatible with the team-list
+ * interpretation while richer for placed boards.
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * EXCLUSION RULES
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * The codec excludes any unit whose championKey is missing from the
+ * supplied planner-code map. This naturally drops:
+ *
+ *   - Training Dummy (TFT_TrainingDummy) — synthetic helper, no
+ *     team_planner_code in CDragon
+ *   - Mini Black Hole, Rift Scuttler, Golden Ox, Golem — NPC units that
+ *     never appear in the team-planner JSON
+ *   - Any other dummy / summon / utility object Riot doesn't expose to
+ *     the in-game planner
+ *
+ * Plus explicit drops at encode time:
+ *
+ *   - code === 0      collides with the empty-slot sentinel (Apex
+ *                     Primordian / TFT17_Enemy_Aatrox)
+ *   - code > 127      doesn't fit the 7-bit slot (no Set 17 champion
+ *                     hits this; included as a future-set guard)
+ *   - position < 0 || >= 28
+ *
+ * What's lost at export: star levels, equipped items, augments. Those
+ * stay intact in the guide's JSONB record; the planner code is just one
+ * export view.
  */
 
 import type { BoardUnit } from "@/features/board-builder/types";
@@ -49,12 +85,12 @@ export type PlannerResult =
   | { ok: true; code: string }
   | { ok: false; error: string };
 
-/** apiName → team_planner_code byte value (from CDragon team-planner JSON). */
+/** apiName → team_planner_code (from CDragon team-planner JSON). */
 export type PlannerCodeMap = Map<string, number>;
 
 export type DecodedPlannerUnit = {
-  championKey: string; // apiName
-  position: number;    // 0–27
+  championKey: string;
+  position: number;
 };
 
 export type DecodedPlannerPayload = {
@@ -67,30 +103,30 @@ export type DecodedPlannerPayload = {
 // ---------------------------------------------------------------------------
 
 const VERSION_PREFIX = "02";
-const BOARD_POSITIONS = 28;
-const HEX_CHARS_PER_POSITION = 2; // 1 byte
-const HEX_PAYLOAD_LENGTH = BOARD_POSITIONS * HEX_CHARS_PER_POSITION; // 56
+const SLOT_COUNT = 10;            // max team size at level 10
+const SLOT_HEX_CHARS = 3;         // 12 bits per slot
+const EMPTY_SLOT = "000";
+const POSITION_BITS = 5;
+const CHAMPION_BITS = 7;
+const MAX_POSITION = (1 << POSITION_BITS) - 1;   // 31
+const MAX_CHAMPION_CODE = (1 << CHAMPION_BITS) - 1; // 127
+const HEX_PAYLOAD_LENGTH = SLOT_COUNT * SLOT_HEX_CHARS; // 30
 
-// "02" + 56 hex + "TFTSet<digits>". Whitespace-tolerant, case-insensitive hex.
-const PLANNER_CODE_RE = /^02([0-9A-Fa-f]{56})TFTSet(\d+)$/;
+// "02" + exactly 30 hex chars + "TFTSet<digits>" (whitespace-tolerant,
+// case-insensitive hex via the caller's normalization).
+const PLANNER_CODE_RE = /^02([0-9a-fA-F]{30})TFTSet(\d+)$/;
 
 // ---------------------------------------------------------------------------
 // Encode
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a TFT in-game team-planner code from a list of board units.
+ * Generate a TFT in-game team-planner code.
  *
- * Behavior:
- *   - Empty board → returns `{ ok: false, error }`.
- *   - Each unit with a valid position + known `team_planner_code` is placed
- *     into its hex byte slot.
- *   - Units missing from the planner map (e.g. Training Dummy, NPCs) are
- *     skipped with a console.warn — the code still emits as long as at
- *     least one unit encoded successfully.
- *   - Star levels and item assignments are dropped; the in-game format
- *     doesn't carry that info.
- *   - Output is canonical: uppercase hex, single line, no whitespace.
+ * Filters non-exportable units (Training Dummy, NPCs, etc.), sorts the
+ * remainder by board position for stable output, and emits the compact
+ * 40-char format above. Returns `{ ok: false, error }` for empty boards
+ * or when no unit on the board has a known team_planner_code.
  */
 export function generatePlannerCode(
   units: BoardUnit[],
@@ -106,84 +142,102 @@ export function generatePlannerCode(
   if (plannerCodeMap.size === 0) {
     return {
       ok: false,
-      error:
-        "Team-planner data isn't loaded yet — try again in a moment.",
+      error: "Team-planner data isn't loaded yet — try again in a moment.",
     };
   }
 
-  // 28 bytes, all empty (0x00) by default.
-  const bytes = new Array<number>(BOARD_POSITIONS).fill(0);
-  let encoded = 0;
-  const skipped: string[] = [];
-  const collisions: number[] = [];
+  // ── Phase 1: filter to exportable units ─────────────────────────────────
+  // Any unit whose championKey isn't in plannerCodeMap is silently dropped
+  // — that's the natural filter for Training Dummy / Mini Black Hole / Rift
+  // Scuttler / Golden Ox / Golem and any other helper unit Riot doesn't
+  // expose to the in-game planner. We additionally reject codes that
+  // collide with the empty-slot sentinel (0) or don't fit the 7-bit slot.
+  type Exportable = { position: number; championKey: string; code: number };
+  const exportable: Exportable[] = [];
+  const skipped: { championKey: string; reason: string }[] = [];
 
   for (const u of units) {
-    if (!Number.isInteger(u.position) || u.position < 0 || u.position >= BOARD_POSITIONS) {
-      skipped.push(`${u.championKey}@pos=${u.position}`);
+    if (!Number.isInteger(u.position) || u.position < 0 || u.position > 27) {
+      skipped.push({ championKey: u.championKey, reason: `bad position ${u.position}` });
       continue;
     }
     const code = plannerCodeMap.get(u.championKey);
     if (typeof code !== "number") {
-      // Most likely Training Dummy or another non-playable unit Riot doesn't
-      // expose to the in-game planner. Quiet warn — not fatal.
-      console.warn(
-        `[planner-code] no team_planner_code for ${u.championKey}; skipping`
-      );
-      skipped.push(u.championKey);
-      continue;
-    }
-    if (code < 0 || code > 255) {
-      console.warn(
-        `[planner-code] team_planner_code ${code} for ${u.championKey} ` +
-        `is outside the 0–255 byte range; skipping`
-      );
-      skipped.push(`${u.championKey}(${code})`);
+      // Not in the team-planner JSON — special / helper / NPC unit. Quiet.
+      skipped.push({ championKey: u.championKey, reason: "no team_planner_code" });
       continue;
     }
     if (code === 0) {
-      // 0x00 is the "empty position" sentinel in the byte stream. Any champion
-      // assigned code 0 (e.g. the Set 17 enemy-Aatrox NPC) collides with the
-      // empty marker and can't be encoded. Skip and warn.
-      console.warn(
-        `[planner-code] ${u.championKey} has reserved code 0; skipping`
-      );
-      skipped.push(`${u.championKey}(0)`);
+      skipped.push({ championKey: u.championKey, reason: "code 0 reserved" });
       continue;
     }
-    if (bytes[u.position] !== 0) {
-      collisions.push(u.position);
+    if (code < 0 || code > MAX_CHAMPION_CODE) {
+      skipped.push({ championKey: u.championKey, reason: `code ${code} out of range` });
+      continue;
     }
-    bytes[u.position] = code;
-    encoded++;
+    if (u.position > MAX_POSITION) {
+      // Defensive: BoardUnit positions are 0-27, well under 31, so this is
+      // unreachable in practice — but the slot's position field is only 5
+      // bits wide, so encode-time guarding prevents silent corruption.
+      skipped.push({ championKey: u.championKey, reason: `position ${u.position} > 5-bit max` });
+      continue;
+    }
+    exportable.push({ position: u.position, championKey: u.championKey, code });
   }
 
-  if (encoded === 0) {
+  if (exportable.length === 0) {
     return {
       ok: false,
       error:
-        "No champions on the board are exportable to the in-game planner " +
-        "(missing team_planner_code values).",
+        "No exportable champions on the board — the in-game planner only " +
+        "accepts standard playable units (Training Dummy and helper units " +
+        "are excluded).",
     };
   }
 
-  const hex = bytes
-    .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
-    .join("");
-  const code = `${VERSION_PREFIX}${hex}TFTSet${setNumber}`;
+  // ── Phase 2: deterministic ordering ─────────────────────────────────────
+  // Sort by board position so the same board always produces the same code.
+  exportable.sort((a, b) => a.position - b.position);
 
-  // Debug log so we can inspect what was emitted while developing / supporting.
-  console.debug(
-    `[planner-code] generated ${code} (encoded=${encoded}, ` +
-    `skipped=${skipped.length}${collisions.length ? `, collisions=${collisions.length}` : ""})`
-  );
+  // Cap at 10 — the in-game planner only has 10 slots. Anything beyond is
+  // dropped (shouldn't happen on a legal board, but defensive).
+  if (exportable.length > SLOT_COUNT) {
+    const overflow = exportable.length - SLOT_COUNT;
+    console.warn(
+      `[planner-code] board has ${exportable.length} valid units; dropping ${overflow} ` +
+      "beyond the planner's 10-slot maximum"
+    );
+  }
+  const toExport = exportable.slice(0, SLOT_COUNT);
 
-  // Sanity check before returning — guarantees we never hand the user a code
-  // that can't roundtrip back through our own decoder.
+  // ── Phase 3: pack into 12-bit slots ─────────────────────────────────────
+  const slots: string[] = toExport.map((u) => {
+    const packed = (u.position << CHAMPION_BITS) | u.code;
+    return packed.toString(16).padStart(SLOT_HEX_CHARS, "0").toLowerCase();
+  });
+  // Fixed-length output: pad to SLOT_COUNT with empty slots.
+  while (slots.length < SLOT_COUNT) slots.push(EMPTY_SLOT);
+
+  const code = `${VERSION_PREFIX}${slots.join("")}TFTSet${setNumber}`;
+
+  // ── Phase 4: self-validate before returning ─────────────────────────────
   if (!PLANNER_CODE_RE.test(code)) {
     return {
       ok: false,
       error: "Internal error: generated code failed self-validation.",
     };
+  }
+
+  // Support-friendly debug log: code, unit count, what we skipped.
+  if (skipped.length > 0) {
+    console.debug(
+      `[planner-code] generated ${code} ` +
+      `(encoded=${toExport.length}, skipped=${skipped.length}: ` +
+      skipped.map((s) => `${s.championKey}[${s.reason}]`).join(", ") +
+      ")"
+    );
+  } else {
+    console.debug(`[planner-code] generated ${code} (encoded=${toExport.length})`);
   }
 
   return { ok: true, code };
@@ -194,11 +248,10 @@ export function generatePlannerCode(
 // ---------------------------------------------------------------------------
 
 /**
- * Decode a TFT in-game team-planner code into champion positions.
+ * Decode a compact-format planner code into champion positions.
  *
- * Tolerant of whitespace + mixed case. Returns `{ ok: false }` for any input
- * that doesn't match the canonical format (so callers can show a helpful
- * "this doesn't look like a planner code" message instead of crashing).
+ * Tolerant of whitespace and mixed-case hex. Returns `{ ok: false }` for
+ * any input that doesn't match the canonical 40-char Set 17 format.
  */
 export function decodePlannerCode(
   code: string,
@@ -213,33 +266,34 @@ export function decodePlannerCode(
     return {
       ok: false,
       error:
-        'Code must be "02<56 hex chars>TFTSet<N>" — got ' +
-        `${trimmed.slice(0, 8)}…(${trimmed.length} chars)`,
+        'Code must be "02<30 hex chars>TFTSet<N>" — got ' +
+        `${trimmed.slice(0, 10)}…(${trimmed.length} chars)`,
     };
   }
   const hex = match[1];
   const set = parseInt(match[2], 10);
 
-  // Build reverse map (code → apiName) once per decode. The map is small
-  // (~60 entries), so the cost is negligible vs. caching complexity.
+  // Build reverse map once per decode (small, ~60 entries — cheap).
   const reverse = new Map<number, string>();
   for (const [apiName, byteCode] of plannerCodeMap) {
-    if (byteCode > 0 && byteCode <= 255) reverse.set(byteCode, apiName);
+    if (byteCode > 0 && byteCode <= MAX_CHAMPION_CODE) reverse.set(byteCode, apiName);
   }
 
   const units: DecodedPlannerUnit[] = [];
-  for (let pos = 0; pos < BOARD_POSITIONS; pos++) {
-    const byte = parseInt(hex.substring(pos * 2, pos * 2 + 2), 16);
-    if (byte === 0) continue;
-    const championKey = reverse.get(byte);
+  for (let slot = 0; slot < SLOT_COUNT; slot++) {
+    const slotHex = hex.substring(slot * SLOT_HEX_CHARS, (slot + 1) * SLOT_HEX_CHARS);
+    const value = parseInt(slotHex, 16);
+    if (value === 0) continue; // empty slot
+    const position = (value >> CHAMPION_BITS) & MAX_POSITION;
+    const championCode = value & MAX_CHAMPION_CODE;
+    const championKey = reverse.get(championCode);
     if (!championKey) {
       console.warn(
-        `[planner-code] unknown champion byte ${byte.toString(16).padStart(2, "0")} ` +
-        `at position ${pos} (set ${set})`
+        `[planner-code] unknown champion code ${championCode} in slot ${slot} (set ${set})`
       );
       continue;
     }
-    units.push({ championKey, position: pos });
+    units.push({ championKey, position });
   }
 
   return { ok: true, payload: { set, units } };
@@ -249,10 +303,15 @@ export function decodePlannerCode(
 // Self-test (development-only)
 // ---------------------------------------------------------------------------
 //
-// Run an encode → decode roundtrip on a fixed fixture whenever this module
-// loads in a development build. Surfaces format regressions immediately
-// instead of waiting for someone to paste a real code into the client.
-// Production builds (NODE_ENV === "production") skip the assertion.
+// Two roundtrip fixtures run at module load in development:
+//
+//   1. The compact MetaTFT-exported example — verifies our decoder reads
+//      the known-good wire format end-to-end.
+//   2. A 3-unit positioned board — verifies the encoder produces a code
+//      that roundtrips through our own decoder.
+//
+// Vite statically replaces `process.env.NODE_ENV`, so production builds
+// strip this entire block via dead-code elimination.
 
 if (
   typeof process !== "undefined" &&
@@ -260,40 +319,67 @@ if (
   typeof globalThis !== "undefined"
 ) {
   try {
-    // Synthetic fixture: 3 units at positions 3, 10, 24. Codes chosen to
-    // exercise the hex padding (one needs leading 0).
-    const fixtureMap: PlannerCodeMap = new Map([
-      ["TFT17_Jinx", 18],     // 0x12
-      ["TFT17_Ahri", 1],      // 0x01 — tests single-digit padding
-      ["TFT17_Galio", 39],    // 0x27
+    // Fixture A: the known-good MetaTFT example. All 10 slots use position 0
+    // (team-list style export); we verify our decoder reads 8 known champions.
+    const setSeventeenMap: PlannerCodeMap = new Map([
+      ["TFT17_Gragas", 49],
+      ["TFT17_Pyke", 45],
+      ["TFT17_Maokai", 30],
+      ["TFT17_Karma", 34],
+      ["TFT17_TahmKench", 79],
+      ["TFT17_Urgot", 36],
+      ["TFT17_Pantheon", 37],
+      ["TFT17_Chogath", 69],
     ]);
+    const knownGood = "0203102d01e02204f024025045000000TFTSet17";
+    const decA = decodePlannerCode(knownGood, setSeventeenMap);
+    if (!decA.ok) {
+      console.error("[planner-code self-test A] decode of known-good failed:", decA.error);
+    } else if (decA.payload.set !== 17 || decA.payload.units.length !== 8) {
+      console.error("[planner-code self-test A] decoded wrong shape:", decA.payload);
+    } else {
+      console.debug(
+        `[planner-code self-test A] decoded MetaTFT example: set=${decA.payload.set}, ` +
+        `${decA.payload.units.length} units (` +
+        decA.payload.units.map((u) => u.championKey).join(", ") +
+        ")"
+      );
+    }
+
+    // Fixture B: positioned 3-unit board encode → decode roundtrip.
     const fixtureUnits: BoardUnit[] = [
       { id: "a", championKey: "TFT17_Jinx", position: 3, items: [], starLevel: 2, isCarry: false, isItemHolder: false },
-      { id: "b", championKey: "TFT17_Ahri", position: 10, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "c", championKey: "TFT17_Galio", position: 24, items: [], starLevel: 3, isCarry: false, isItemHolder: false },
+      { id: "b", championKey: "TFT17_Maokai", position: 10, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "c", championKey: "TFT17_Pyke", position: 24, items: [], starLevel: 3, isCarry: false, isItemHolder: false },
     ];
-    const enc = generatePlannerCode(fixtureUnits, 17, fixtureMap);
-    if (!enc.ok) {
-      console.error("[planner-code self-test] encode failed:", enc.error);
+    const fixtureMap: PlannerCodeMap = new Map([
+      ["TFT17_Jinx", 18],
+      ["TFT17_Maokai", 30],
+      ["TFT17_Pyke", 45],
+    ]);
+    const encB = generatePlannerCode(fixtureUnits, 17, fixtureMap);
+    if (!encB.ok) {
+      console.error("[planner-code self-test B] encode failed:", encB.error);
     } else {
-      const dec = decodePlannerCode(enc.code, fixtureMap);
-      if (!dec.ok) {
-        console.error("[planner-code self-test] decode failed:", dec.error);
+      const decB = decodePlannerCode(encB.code, fixtureMap);
+      if (!decB.ok) {
+        console.error("[planner-code self-test B] decode failed:", decB.error);
       } else {
-        const okSet = dec.payload.set === 17;
-        const okCount = dec.payload.units.length === 3;
-        const okPositions = dec.payload.units
+        const okSet = decB.payload.set === 17;
+        const okCount = decB.payload.units.length === 3;
+        const okPositions = decB.payload.units
           .map((u) => `${u.championKey}@${u.position}`)
           .sort()
           .join(",") ===
-          "TFT17_Ahri@10,TFT17_Galio@24,TFT17_Jinx@3";
-        const okSuffix = enc.code.endsWith("TFTSet17");
-        if (okSet && okCount && okPositions && okSuffix) {
-          console.debug("[planner-code self-test] roundtrip OK:", enc.code);
+          "TFT17_Jinx@3,TFT17_Maokai@10,TFT17_Pyke@24";
+        const okSuffix = encB.code.endsWith("TFTSet17");
+        const okLength = encB.code.length === 40;
+        if (okSet && okCount && okPositions && okSuffix && okLength) {
+          console.debug("[planner-code self-test B] roundtrip OK:", encB.code);
         } else {
           console.error(
-            "[planner-code self-test] roundtrip MISMATCH",
-            { code: enc.code, decoded: dec.payload, okSet, okCount, okPositions, okSuffix }
+            "[planner-code self-test B] roundtrip MISMATCH",
+            { code: encB.code, decoded: decB.payload, okSet, okCount, okPositions, okSuffix, okLength }
           );
         }
       }
