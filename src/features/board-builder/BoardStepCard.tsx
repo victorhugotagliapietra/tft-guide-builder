@@ -321,18 +321,30 @@ function sortChampions(champions: TFTChampion[]): TFTChampion[] {
  *
  * Behavior:
  *   - empty query → match everything
- *   - matches name substring (case-insensitive)
- *   - matches any trait substring (case-insensitive)
+ *   - leading numeric token (1-5) becomes a strict cost filter:
+ *       "1"         → all cost-1 champions
+ *       "2 inv"     → cost-2 champions whose name OR a trait contains "inv"
+ *       "4 pri"     → cost-4 champions whose name OR a trait contains "pri"
+ *     The cost prefix MUST be followed by a space (or end-of-string), so
+ *     "11" / "12" don't accidentally trigger cost filtering — they fall
+ *     through to name/trait substring search as before.
+ *   - otherwise: matches name substring (case-insensitive) OR any trait
+ *     substring (case-insensitive)
  *   - Training Dummy is a special case: it ONLY appears for empty query or
- *     when the query is a substring of "training", "dummy", or
- *     "training dummy". This prevents the dummy from leaking into unrelated
- *     searches.
+ *     when the query is a substring of "training", "dummy", or "training
+ *     dummy". Numeric cost searches never include it (cost-0 unit anyway,
+ *     and the dummy is gated before cost-filter logic runs).
  *
- * The query is taken pre-lowercased to avoid recomputing it inside the loop.
+ * The query is pre-lowercased + trimmed by the caller.
  */
+const COST_PREFIX_RE = /^([1-5])(?:\s+(.*))?$/;
+
 function matchesQuery(c: TFTChampion, q: string): boolean {
   if (!q) return true;
 
+  // Training Dummy gating runs first so a cost-only query like "1" cannot
+  // accidentally show the dummy, and a name-only query like "training" still
+  // matches it.
   if (isTrainingDummy(c)) {
     return (
       "training".includes(q) ||
@@ -341,6 +353,23 @@ function matchesQuery(c: TFTChampion, q: string): boolean {
     );
   }
 
+  // Cost-prefix filter — `N`-only or `N <rest>`. When `<rest>` is present it
+  // applies name+trait matching to the rest after the cost filter passes;
+  // when absent, every cost-N champion matches.
+  const costMatch = COST_PREFIX_RE.exec(q);
+  if (costMatch) {
+    const requiredCost = parseInt(costMatch[1], 10);
+    if (c.cost !== requiredCost) return false;
+    const rest = (costMatch[2] ?? "").trim();
+    if (!rest) return true;
+    if (c.name.toLowerCase().includes(rest)) return true;
+    for (const t of c.traits) {
+      if (t.toLowerCase().includes(rest)) return true;
+    }
+    return false;
+  }
+
+  // No cost prefix — original name/trait substring match.
   if (c.name.toLowerCase().includes(q)) return true;
   for (const t of c.traits) {
     if (t.toLowerCase().includes(q)) return true;
@@ -538,6 +567,12 @@ export function BoardStepCard({
   const [selectedPos, setSelectedPos] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
+  // Ref to the board container — used by handleDragEnd to distinguish between
+  // "user dropped a unit in the gap between hexes" (cancel, no-op) and "user
+  // dragged the unit fully outside the board" (remove). The board container is
+  // the BoardGrid wrapper div; we attach the ref there in the JSX below.
+  const boardContainerRef = useRef<HTMLDivElement | null>(null);
+
   // Sync external step.level changes back into the input
   useEffect(() => {
     setLevelText(String(step.level));
@@ -593,7 +628,41 @@ export function BoardStepCard({
     setSelectedPos(null);
   }
 
-  function handleDragEnd({ active, over }: DragEndEvent) {
+  /**
+   * Was the pointer still inside the board container's bounding box when the
+   * drag ended? Used to distinguish "dropped in the gap between two hexes"
+   * (cancel, NOT remove) from "dragged fully outside the board" (remove).
+   *
+   * We derive the final pointer position from the activator event's clientX/Y
+   * plus dnd-kit's accumulated `delta`. Returns false defensively if any
+   * piece is unavailable, so the worst case is "treated as outside" — which
+   * the caller then routes through additional zone checks before removing.
+   */
+  function isPointerInsideBoard(
+    activatorEvent: DragEndEvent["activatorEvent"],
+    delta: DragEndEvent["delta"]
+  ): boolean {
+    const el = boardContainerRef.current;
+    if (!el) return false;
+    // PointerEvent / MouseEvent / TouchEvent — read clientX/Y from whichever shape.
+    const ev = activatorEvent as PointerEvent | MouseEvent | TouchEvent | null;
+    let startX: number | undefined;
+    let startY: number | undefined;
+    if (ev && "clientX" in ev) {
+      startX = (ev as PointerEvent).clientX;
+      startY = (ev as PointerEvent).clientY;
+    } else if (ev && "touches" in ev && ev.touches[0]) {
+      startX = ev.touches[0].clientX;
+      startY = ev.touches[0].clientY;
+    }
+    if (startX === undefined || startY === undefined) return false;
+    const x = startX + delta.x;
+    const y = startY + delta.y;
+    const r = el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+
+  function handleDragEnd({ active, over, activatorEvent, delta }: DragEndEvent) {
     const activeId = String(active.id);
     const overId = over ? String(over.id) : null;
     setActiveDragId(null);
@@ -605,12 +674,6 @@ export function BoardStepCard({
 
     // ----- Source: board unit -----
     if (source.zone === "board") {
-      // board → outside any droppable  ⇒ remove
-      if (!over) {
-        console.debug("[TFT][drag] board → outside ⇒ remove", source.pos);
-        removeUnitAt(source.pos);
-        return;
-      }
       // board → remove zone (champion/items panel)  ⇒ remove
       if (destination.zone === "remove") {
         console.debug("[TFT][drag] board → remove zone ⇒ remove", source.pos);
@@ -622,8 +685,19 @@ export function BoardStepCard({
         moveOrSwap(source.pos, destination.pos);
         return;
       }
-      // Any other destination is ignored — but we still treat unrecognized
-      // drops as a no-op rather than removing, to avoid surprising the user.
+      // Neither a hex nor the trash zone was hit. Removal here used to be
+      // unconditional, but that punished users for dropping a champion in
+      // the small empty space between hexes. New rule: only remove if the
+      // pointer was actually OUTSIDE the board container when released —
+      // otherwise treat the drop as a forgiving no-op and leave the unit
+      // where it started.
+      const stayedOnBoard = isPointerInsideBoard(activatorEvent, delta);
+      if (stayedOnBoard) {
+        console.debug("[TFT][drag] board → gap inside board ⇒ revert", source.pos);
+        return;
+      }
+      console.debug("[TFT][drag] board → outside board ⇒ remove", source.pos);
+      removeUnitAt(source.pos);
       return;
     }
 
@@ -1054,7 +1128,7 @@ export function BoardStepCard({
                   drag-target alignment. */}
               <div className="flex items-start justify-center gap-2 overflow-x-auto">
                 <TraitsPanel units={step.units} />
-                <div className="rounded-lg shrink-0">
+                <div ref={boardContainerRef} className="rounded-lg shrink-0">
                   <BoardGrid
                     units={step.units}
                     selectedPos={selectedPos}
