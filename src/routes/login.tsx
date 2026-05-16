@@ -1,53 +1,44 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
+import { useGoogleSignIn } from "@/hooks/use-google-signin";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+// Optional `?next=/some/path` so deep-linked protected routes survive the
+// OAuth round-trip. Any external URL is rejected by the schema: we only allow
+// same-origin paths starting with "/".
+const loginSearch = z.object({
+  next: z.string().startsWith("/").optional().catch(undefined),
+});
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
+  validateSearch: loginSearch,
 });
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { user, loading } = useAuth();
+  const { next } = Route.useSearch();
+  const { signInWithGoogle, signingIn } = useGoogleSignIn();
 
+  // If the user is already signed in, bounce them to wherever they intended
+  // to go (or their guides). No reason to ever show this page to a logged-in
+  // user — it would just be a dead end.
   useEffect(() => {
-    if (user) navigate({ to: "/dashboard" });
-  }, [user, navigate]);
-
-  const handleEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    if (loading) return;
+    if (user) {
+      // `next` is an arbitrary same-origin path validated by the search
+      // schema; TanStack's typed-path `to` doesn't accept dynamic strings,
+      // so we cast at this boundary. Safety is enforced by the zod schema
+      // (must start with "/") rather than the type system.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      navigate({ to: (next ?? "/dashboard") as any, replace: true });
     }
-    navigate({ to: "/dashboard" });
-  };
-
-  const handleGoogle = async () => {
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
-      toast.error(result.error.message ?? "Google sign-in failed");
-      return;
-    }
-    if (result.redirected) return;
-    navigate({ to: "/dashboard" });
-  };
+  }, [user, loading, next, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -55,42 +46,38 @@ function LoginPage() {
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle>Sign in</CardTitle>
+            <CardTitle className="text-center">Sign in to create guides</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button variant="outline" className="w-full" onClick={handleGoogle}>
-              Continue with Google
+            <Button
+              size="lg"
+              className="w-full"
+              onClick={() => signInWithGoogle(next)}
+              disabled={signingIn}
+            >
+              <GoogleMark className="mr-2 h-4 w-4" />
+              {signingIn ? "Redirecting…" : "Continue with Google"}
             </Button>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-card px-2 text-muted-foreground">or with email</span>
-              </div>
-            </div>
-            <form onSubmit={handleEmail} className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Signing in..." : "Sign in"}
-              </Button>
-            </form>
-            <p className="text-sm text-muted-foreground text-center">
-              No account?{" "}
-              <Link to="/signup" className="text-primary hover:underline">
-                Sign up
-              </Link>
+            <p className="text-xs text-muted-foreground text-center leading-relaxed">
+              You only need an account to <strong>create</strong> guides.
+              <br />
+              Browsing and sharing guides is always free and anonymous.
             </p>
           </CardContent>
         </Card>
       </main>
     </div>
+  );
+}
+
+// Inline Google "G" mark — no extra dependency, scales with text size.
+function GoogleMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.5 14.6 2.5 12 2.5 6.9 2.5 2.8 6.6 2.8 11.7S6.9 21 12 21c6.9 0 9.2-4.8 9.2-7.3 0-.5-.1-.9-.1-1.3H12z"
+      />
+    </svg>
   );
 }

@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Link as LinkIcon, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode, type PlannerCodeMap } from "@/features/tft-data/planner-code";
 import type { TFTChampion } from "@/features/tft-data/types";
@@ -257,39 +258,72 @@ function ReadOnlyStepCard({
 
 function PublicGuide() {
   const { slug } = Route.useParams();
+  const navigate = useNavigate();
+  // We only need to know when auth has settled (so RLS-tagged queries return
+  // owner-visible drafts correctly). The user object itself isn't read here —
+  // RLS does the gating.
+  const { loading: authLoading } = useAuth();
   const [state, setState] = useState<PageState>({ status: "loading" });
   const { setNumber: cdnSetNumber, plannerCodeMap, championMap } = useTFTData();
 
   useEffect(() => {
-    supabase
-      .from("guides")
-      .select(
-        "title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, board_steps"
-      )
-      .eq("slug", slug)
-      .eq("is_public", true)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) {
-          setState({ status: "missing" });
+    // Wait until auth resolves so we don't race owner-render vs anon-redirect.
+    if (authLoading) return;
+    let cancelled = false;
+    (async () => {
+      // First pass: SELECT without the is_public filter. RLS returns the row
+      // when (a) the guide is public OR (b) the viewer is the author. So a
+      // null result here means "anonymous viewer + private guide" or "row
+      // doesn't exist" — we differentiate via the redirect RPC below.
+      const { data } = await supabase
+        .from("guides")
+        .select(
+          "title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, board_steps, is_public, author_id"
+        )
+        .eq("slug", slug)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!data) {
+        // Try the SECURITY DEFINER redirect: if the guide exists but is
+        // private, the RPC tells us which profile to bounce to. Otherwise
+        // we fall through to the "missing" state.
+        const { data: redirectInfo } = await supabase.rpc("guide_redirect_info", {
+          p_slug: slug,
+        });
+        if (cancelled) return;
+        const info = redirectInfo?.[0];
+        if (info?.exists_flag && info.author_username) {
+          navigate({
+            to: "/profile/$username",
+            params: { username: info.author_username },
+            replace: true,
+          });
           return;
         }
-        const parsed = boardStepsSchema.safeParse(data.board_steps);
-        setState({
-          status: "ok",
-          guide: {
-            title: data.title,
-            description: data.description ?? "",
-            tft_set: data.tft_set ?? "",
-            patch: data.patch ?? "",
-            playstyle: data.playstyle ?? "",
-            difficulty: data.difficulty,
-            final_comp_notes: data.final_comp_notes ?? "",
-            steps: parsed.success ? parsed.data : [],
-          },
-        });
+        setState({ status: "missing" });
+        return;
+      }
+      // Owner sees their own draft → render. Public guide → render. (No
+      // explicit branch needed; RLS already filtered correctly.)
+      const parsed = boardStepsSchema.safeParse(data.board_steps);
+      setState({
+        status: "ok",
+        guide: {
+          title: data.title,
+          description: data.description ?? "",
+          tft_set: data.tft_set ?? "",
+          patch: data.patch ?? "",
+          playstyle: data.playstyle ?? "",
+          difficulty: data.difficulty,
+          final_comp_notes: data.final_comp_notes ?? "",
+          steps: parsed.success ? parsed.data : [],
+        },
       });
-  }, [slug]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, authLoading, navigate]);
 
   // Update document title when guide loads
   useEffect(() => {

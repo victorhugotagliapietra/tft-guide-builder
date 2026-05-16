@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Layers, LayoutDashboard, Share2, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { useAuth } from "@/hooks/use-auth";
+import { useGoogleSignIn } from "@/hooks/use-google-signin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ type PublicGuide = {
 function Index() {
   const [guides, setGuides] = useState<PublicGuide[]>([]);
   const { user } = useAuth();
+  const { signInWithGoogle, signingIn } = useGoogleSignIn();
 
   useEffect(() => {
     supabase
@@ -62,15 +64,15 @@ function Index() {
                 </Link>
               </Button>
             ) : (
-              <Button asChild size="lg">
-                <Link to="/signup">
-                  Start a guide <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            )}
-            {!user && (
-              <Button asChild variant="outline" size="lg">
-                <Link to="/login">Sign in</Link>
+              // Single primary action — anonymous users go straight through
+              // Google and land on /guides/new after auth. No interstitial
+              // signup page; no "/login then click another button" stop.
+              <Button
+                size="lg"
+                onClick={() => signInWithGoogle("/guides/new")}
+                disabled={signingIn}
+              >
+                Start a guide <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}
           </div>

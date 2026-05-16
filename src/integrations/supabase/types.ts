@@ -92,12 +92,82 @@ export type Database = {
         }
         Relationships: []
       }
+      collections: {
+        Row: {
+          id: string
+          owner_id: string
+          title: string
+          description: string
+          is_public: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_id: string
+          title: string
+          description?: string
+          is_public?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_id?: string
+          title?: string
+          description?: string
+          is_public?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      collection_guides: {
+        Row: {
+          collection_id: string
+          guide_id: string
+          position: number
+          added_at: string
+        }
+        Insert: {
+          collection_id: string
+          guide_id: string
+          position?: number
+          added_at?: string
+        }
+        Update: {
+          collection_id?: string
+          guide_id?: string
+          position?: number
+          added_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      guide_redirect_info: {
+        Args: { p_slug: string }
+        Returns: {
+          exists_flag: boolean
+          is_public: boolean
+          author_username: string | null
+        }[]
+      }
+      collection_redirect_info: {
+        Args: { p_id: string }
+        Returns: {
+          exists_flag: boolean
+          is_public: boolean
+          owner_username: string | null
+        }[]
+      }
+      is_username_available: {
+        Args: { p_username: string }
+        Returns: boolean
+      }
     }
     Enums: {
       guide_difficulty: "easy" | "medium" | "hard"
