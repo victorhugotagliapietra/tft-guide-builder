@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Globe, Lock } from "lucide-react";
+import { Plus, Globe, Lock, Folders } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -47,11 +47,18 @@ function Dashboard() {
             Drafts and published comps you've created.
           </p>
         </div>
-        <Button asChild>
-          <Link to="/guides/new">
-            <Plus className="h-4 w-4 mr-1" /> New guide
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/collections">
+              <Folders className="h-4 w-4 mr-1" /> Collections
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link to="/guides/new">
+              <Plus className="h-4 w-4 mr-1" /> New guide
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {state.status === "loading" && (
