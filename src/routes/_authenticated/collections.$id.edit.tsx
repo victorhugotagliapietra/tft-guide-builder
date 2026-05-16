@@ -1,17 +1,29 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
-  ArrowDown,
-  ArrowUp,
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ExternalLink,
   Globe,
+  GripVertical,
   Lock,
-  Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -19,6 +31,7 @@ import {
   collectionFormSchema,
   type CollectionFormValues,
 } from "@/features/collections/types";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -37,13 +50,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Form,
   FormControl,
   FormDescription,
@@ -58,29 +64,27 @@ export const Route = createFileRoute("/_authenticated/collections/$id/edit")({
   component: EditCollection,
 });
 
-type GuidePick = GuideSummary;
-type Member = GuidePick & { position: number };
-
 /**
- * Collection editor. Loads the collection metadata + ordered membership in
- * parallel, lets the owner:
+ * Collection editor — metadata form + drag-and-drop list of the guides
+ * assigned to this folder (i.e. `guides.collection_id = this.id`).
  *
- *   - Rename, edit description, toggle published
- *   - Add/remove guides from a "library" picker (sourced from the owner's
- *     own guides — you can only put your guides into your collections)
- *   - Reorder guides up/down
- *   - Delete the collection entirely
+ * Guides land in a collection via the picker on the guide form, not here.
+ * This page exists to:
+ *   - Rename / re-describe / publish / delete the collection.
+ *   - Reorder the guides inside it via drag-and-drop.
+ *   - Eject a guide (just nulls its `collection_id`).
  *
- * Ordering is stored as integer `position`; we re-assign sequential
- * positions on save so gaps from deletes don't accumulate.
+ * Saving order is debounced auto-save: each drop schedules a single batch
+ * UPDATE 600ms later, so a creator rearranging three guides in quick
+ * succession produces one write instead of three. Manual "Save" still
+ * exists for the metadata fields.
  */
 function EditCollection() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [allGuides, setAllGuides] = useState<GuidePick[]>([]);
+  const [members, setMembers] = useState<GuideSummary[]>([]);
 
   const form = useForm<CollectionFormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -88,28 +92,25 @@ function EditCollection() {
   });
   const { reset } = form;
 
-  // Initial load: collection row + junction rows + owner's full guide
-  // library (so the picker can show what's available to add).
+  // Initial load: the collection row + the guides assigned to it.
+  // The owner can see all of their own guides regardless of is_public, so
+  // a draft assigned to a public collection is still listed here (and the
+  // editor surfaces a "won't show publicly" badge so the creator knows).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const [collectionRes, junctionRes, libraryRes] = await Promise.all([
+      const [collectionRes, guidesRes] = await Promise.all([
         supabase
           .from("collections")
           .select("owner_id, title, description, is_public")
           .eq("id", id)
           .maybeSingle(),
         supabase
-          .from("collection_guides")
-          .select("guide_id, position")
-          .eq("collection_id", id)
-          .order("position", { ascending: true }),
-        supabase
           .from("guides")
-          .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at")
-          .eq("author_id", user.id)
-          .order("updated_at", { ascending: false }),
+          .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at, collection_position")
+          .eq("collection_id", id)
+          .order("collection_position", { ascending: true }),
       ]);
       if (cancelled) return;
 
@@ -129,21 +130,7 @@ function EditCollection() {
         description: collectionRes.data.description ?? "",
         is_public: collectionRes.data.is_public,
       });
-
-      // Hydrate the ordered membership by looking up the actual guide rows.
-      // RLS allows the owner to read their own drafts, so this returns
-      // everything regardless of publication state.
-      const positions = new Map(
-        (junctionRes.data ?? []).map((r) => [r.guide_id, r.position])
-      );
-      const library = (libraryRes.data as GuidePick[]) ?? [];
-      const memberRows: Member[] = library
-        .filter((g) => positions.has(g.id))
-        .map((g) => ({ ...g, position: positions.get(g.id) ?? 0 }))
-        .sort((a, b) => a.position - b.position);
-
-      setMembers(memberRows);
-      setAllGuides(library);
+      setMembers((guidesRes.data as GuideSummary[]) ?? []);
       setLoading(false);
     })();
     return () => {
@@ -151,14 +138,10 @@ function EditCollection() {
     };
   }, [id, user, navigate, reset]);
 
+  // ----- Metadata save (manual button) -----
   const onSubmit = useCallback(
     async (values: CollectionFormValues) => {
-      // Three coordinated writes:
-      //   1. UPDATE the collection row metadata.
-      //   2. DELETE all junction rows, then INSERT the current order.
-      //      (Simpler than diffing — collections are small, < a few dozen
-      //      guides in practice, so the wire cost is negligible.)
-      const { error: metaErr } = await supabase
+      const { error } = await supabase
         .from("collections")
         .update({
           title: values.title,
@@ -166,40 +149,78 @@ function EditCollection() {
           is_public: values.is_public,
         })
         .eq("id", id);
-      if (metaErr) {
-        toast.error(metaErr.message);
+      if (error) {
+        toast.error(error.message);
         return;
       }
-
-      const { error: delErr } = await supabase
-        .from("collection_guides")
-        .delete()
-        .eq("collection_id", id);
-      if (delErr) {
-        toast.error(delErr.message);
-        return;
-      }
-
-      if (members.length > 0) {
-        const { error: insErr } = await supabase.from("collection_guides").insert(
-          members.map((m, i) => ({
-            collection_id: id,
-            guide_id: m.id,
-            position: i,
-          }))
-        );
-        if (insErr) {
-          toast.error(insErr.message);
-          return;
-        }
-      }
-
       toast.success("Saved");
     },
-    [id, members]
+    [id]
   );
 
-  const handleDelete = async () => {
+  // ----- Debounced auto-save of order -----
+  //
+  // Every drag-end schedules a single trailing-edge save. We persist the
+  // entire order by updating each guide's `collection_position`. This is N
+  // round-trips (one per row), which is fine at folder-scale (< a few dozen
+  // guides); switching to a single bulk RPC would only matter at scale.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleOrderSave = useCallback((next: GuideSummary[]) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      // Re-snapshot at fire time so a rapid sequence of drags collapses
+      // into the latest order rather than racing each other.
+      const updates = next.map((g, position) =>
+        supabase.from("guides").update({ collection_position: position }).eq("id", g.id)
+      );
+      const results = await Promise.all(updates);
+      const firstError = results.find((r) => r.error)?.error;
+      if (firstError) {
+        toast.error(`Couldn't save order: ${firstError.message}`);
+      }
+    }, 600);
+  }, []);
+
+  // ----- Drag-and-drop handler -----
+  const sensors = useSensors(
+    // 6-pixel activation threshold so accidental clicks on the row body
+    // (e.g. the "View" button) don't start a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setMembers((prev) => {
+      const oldIndex = prev.findIndex((g) => g.id === active.id);
+      const newIndex = prev.findIndex((g) => g.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const next = arrayMove(prev, oldIndex, newIndex);
+      scheduleOrderSave(next);
+      return next;
+    });
+  };
+
+  // ----- Eject a guide from the collection (sets its collection_id to null) -----
+  const ejectGuide = async (guideId: string) => {
+    setMembers((prev) => prev.filter((m) => m.id !== guideId));
+    const { error } = await supabase
+      .from("guides")
+      .update({ collection_id: null, collection_position: 0 })
+      .eq("id", guideId);
+    if (error) {
+      toast.error(error.message);
+      // Best-effort UI revert: re-fetch on error.
+      const { data } = await supabase
+        .from("guides")
+        .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at, collection_position")
+        .eq("collection_id", id)
+        .order("collection_position", { ascending: true });
+      setMembers((data as GuideSummary[]) ?? []);
+    }
+  };
+
+  const handleDeleteCollection = async () => {
     const { error } = await supabase.from("collections").delete().eq("id", id);
     if (error) {
       toast.error(error.message);
@@ -209,28 +230,6 @@ function EditCollection() {
     navigate({ to: "/collections" });
   };
 
-  const move = (index: number, dir: -1 | 1) => {
-    setMembers((prev) => {
-      const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target]!, next[index]!];
-      return next;
-    });
-  };
-
-  const remove = (guideId: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== guideId));
-  };
-
-  const add = (guide: GuidePick) => {
-    setMembers((prev) =>
-      prev.some((m) => m.id === guide.id)
-        ? prev
-        : [...prev, { ...guide, position: prev.length }]
-    );
-  };
-
   if (loading) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-12 text-muted-foreground">Loading…</div>
@@ -238,8 +237,6 @@ function EditCollection() {
   }
 
   const isPublic = form.watch("is_public");
-  const memberIds = new Set(members.map((m) => m.id));
-  const available = allGuides.filter((g) => !memberIds.has(g.id));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 space-y-6">
@@ -247,11 +244,18 @@ function EditCollection() {
         <h1 className="text-2xl font-semibold">Edit collection</h1>
         <div className="flex items-center gap-2">
           {isPublic && (
-            <Button asChild variant="outline" size="sm">
-              <Link to="/collection/$id" params={{ id }}>
-                <ExternalLink className="h-4 w-4 mr-1" /> View public page
-              </Link>
-            </Button>
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/collection/$id" params={{ id }}>
+                  <ExternalLink className="h-4 w-4 mr-1" /> View public page
+                </Link>
+              </Button>
+              <CopyLinkButton
+                href={`/collection/${id}`}
+                variant="outline"
+                stopPropagation={false}
+              />
+            </>
           )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -264,12 +268,12 @@ function EditCollection() {
                 <AlertDialogTitle>Delete this collection?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This removes the collection and its share link. The guides inside it are not
-                  deleted — they stay on your profile and remain editable.
+                  deleted — they stay on your profile and remain editable, just unassigned.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                <AlertDialogAction onClick={handleDeleteCollection}>Delete</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -347,7 +351,7 @@ function EditCollection() {
                 disabled={form.formState.isSubmitting}
                 className="w-full"
               >
-                {form.formState.isSubmitting ? "Saving…" : "Save collection"}
+                {form.formState.isSubmitting ? "Saving…" : "Save details"}
               </Button>
             </form>
           </Form>
@@ -355,118 +359,111 @@ function EditCollection() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardHeader>
           <CardTitle>Guides ({members.length})</CardTitle>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline" disabled={available.length === 0}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add guides
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add guides to this collection</DialogTitle>
-              </DialogHeader>
-              {available.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">
-                  All your guides are already in this collection. Create another guide to add it
-                  here.
-                </p>
-              ) : (
-                <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
-                  {available.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => add(g)}
-                      className="w-full flex items-center justify-between text-left gap-3 rounded-md border border-border px-3 py-2 hover:border-primary/50 hover:bg-accent transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{g.title}</div>
-                        <div className="text-xs text-muted-foreground flex gap-2 mt-0.5">
-                          {!g.is_public && <span className="text-amber-500">Draft</span>}
-                          {g.tft_set && <span>Set {g.tft_set}</span>}
-                          {g.patch && <span>Patch {g.patch}</span>}
-                        </div>
-                      </div>
-                      <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
+          <p className="text-xs text-muted-foreground mt-1">
+            Drag to reorder — changes save automatically. To add a guide to this collection,
+            open the guide and pick this collection from its dropdown.
+          </p>
         </CardHeader>
         <CardContent>
           {members.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No guides yet. Click <span className="font-medium">Add guides</span> to pick from
-              your library.
+              No guides yet. Open any of <Link to="/dashboard" className="underline">your
+              guides</Link> and assign it to this collection from the dropdown in the editor.
             </p>
           ) : (
-            <ul className="space-y-2">
-              {members.map((m, i) => (
-                <li
-                  key={m.id}
-                  className="flex items-center gap-3 rounded-md border border-border px-3 py-2"
-                >
-                  <span className="text-xs font-mono text-muted-foreground w-6 text-center">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{m.title}</div>
-                    <div className="text-xs text-muted-foreground flex gap-2 mt-0.5">
-                      {!m.is_public && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                          Draft — hidden on public page
-                        </Badge>
-                      )}
-                      {m.tft_set && <span>Set {m.tft_set}</span>}
-                      {m.patch && <span>Patch {m.patch}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => move(i, -1)}
-                      disabled={i === 0}
-                      aria-label="Move up"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => move(i, 1)}
-                      disabled={i === members.length - 1}
-                      aria-label="Move down"
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => remove(m.id)}
-                      aria-label="Remove"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={members.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-2">
+                  {members.map((m, i) => (
+                    <SortableRow
+                      key={m.id}
+                      guide={m}
+                      index={i}
+                      onEject={() => ejectGuide(m.id)}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
-          <p className="text-xs text-muted-foreground mt-4">
-            Order and membership are saved when you click <span className="font-medium">Save
-            collection</span> above.
-          </p>
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Single draggable row. The drag handle is the GripVertical button on the
+ * left — the rest of the row keeps normal pointer events so creators can
+ * still click the title link or the eject button without triggering a drag.
+ */
+function SortableRow({
+  guide,
+  index,
+  onEject,
+}: {
+  guide: GuideSummary;
+  index: number;
+  onEject: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: guide.id,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    // While dragging, lift the row visually and dim the rest so the user
+    // can't lose track of what they're moving in a long list.
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : "auto",
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+        aria-label="Drag to reorder"
+      >
+        <GripVertical className="h-5 w-5" />
+      </button>
+      <span className="text-xs font-mono text-muted-foreground w-6 text-center">{index + 1}</span>
+      <div className="flex-1 min-w-0">
+        <Link
+          to="/guides/$id/edit"
+          params={{ id: guide.id }}
+          className="font-medium truncate hover:underline block"
+        >
+          {guide.title}
+        </Link>
+        <div className="text-xs text-muted-foreground flex gap-2 mt-0.5 items-center">
+          {!guide.is_public && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              Draft — hidden on public page
+            </Badge>
+          )}
+          {guide.tft_set && <span>Set {guide.tft_set}</span>}
+          {guide.patch && <span>Patch {guide.patch}</span>}
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onEject}
+        title="Remove from collection (the guide itself isn't deleted)"
+      >
+        Remove
+      </Button>
+    </li>
   );
 }

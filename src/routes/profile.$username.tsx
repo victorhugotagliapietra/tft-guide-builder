@@ -4,6 +4,8 @@ import { Folders, ListMinus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteHeader } from "@/components/site-header";
 import { GuideCard } from "@/features/guides/GuideCard";
+import { CopyLinkButton } from "@/components/copy-link-button";
+import { htmlExcerpt } from "@/lib/html-text";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +68,10 @@ function ProfilePage() {
         return;
       }
 
-      // 2. Public guides + public collections, in parallel.
+      // 2. Public guides + public collections, in parallel. Collections
+      //    aggregate their guide count via the inverse `guides` FK — only
+      //    public guides are counted because we filter on the embedded
+      //    relation, mirroring what an anonymous viewer can actually see.
       const [guidesRes, collectionsRes] = await Promise.all([
         supabase
           .from("guides")
@@ -76,9 +81,10 @@ function ProfilePage() {
           .order("updated_at", { ascending: false }),
         supabase
           .from("collections")
-          .select("id, title, description, collection_guides(count)")
+          .select("id, title, description, guides(count)")
           .eq("owner_id", profile.id)
           .eq("is_public", true)
+          .eq("guides.is_public", true)
           .order("updated_at", { ascending: false }),
       ]);
 
@@ -89,11 +95,11 @@ function ProfilePage() {
       // foreign-table key. Normalize into a flat number so the card render
       // doesn't have to know about the Supabase wire shape.
       const collections: CollectionPreview[] = (collectionsRes.data ?? []).map(
-        (c: { id: string; title: string; description: string; collection_guides?: { count: number }[] }) => ({
+        (c: { id: string; title: string; description: string; guides?: { count: number }[] }) => ({
           id: c.id,
           title: c.title,
           description: c.description,
-          guide_count: c.collection_guides?.[0]?.count ?? 0,
+          guide_count: c.guides?.[0]?.count ?? 0,
         })
       );
 
@@ -148,19 +154,29 @@ function ProfilePage() {
             >
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {state.collections.map((c) => (
-                  <Link key={c.id} to="/collection/$id" params={{ id: c.id }}>
+                  <Link key={c.id} to="/collection/$id" params={{ id: c.id }} className="block h-full">
                     <Card className="hover:border-primary/50 transition-colors h-full">
                       <CardHeader>
                         <div className="flex items-start justify-between gap-2">
                           <CardTitle className="text-lg leading-tight">{c.title}</CardTitle>
-                          <Badge variant="outline" className="shrink-0">
-                            {c.guide_count} {c.guide_count === 1 ? "guide" : "guides"}
-                          </Badge>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Badge variant="outline">
+                              {c.guide_count} {c.guide_count === 1 ? "guide" : "guides"}
+                            </Badge>
+                            <CopyLinkButton
+                              href={`/collection/${c.id}`}
+                              iconOnly
+                              variant="ghost"
+                              stopPropagation
+                            />
+                          </div>
                         </div>
                       </CardHeader>
                       {c.description && (
                         <CardContent>
-                          <p className="text-sm text-muted-foreground line-clamp-2">{c.description}</p>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {htmlExcerpt(c.description, 140)}
+                          </p>
                         </CardContent>
                       )}
                     </Card>
@@ -197,13 +213,19 @@ function ProfileHeader({ profile, guideCount }: { profile: ProfileRow; guideCoun
           {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={display} />}
           <AvatarFallback className="text-2xl">{initial}</AvatarFallback>
         </Avatar>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-3xl font-semibold leading-tight">{display}</h1>
           <p className="text-muted-foreground text-sm mt-1 font-mono">@{profile.username}</p>
           <p className="text-xs text-muted-foreground mt-2">
             {guideCount} public {guideCount === 1 ? "guide" : "guides"}
           </p>
         </div>
+        <CopyLinkButton
+          href={`/profile/${profile.username}`}
+          variant="outline"
+          stopPropagation={false}
+          label="Copy profile link"
+        />
       </div>
     </section>
   );

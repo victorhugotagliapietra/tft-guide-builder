@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Plus, Folders, Globe, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { CopyLinkButton } from "@/components/copy-link-button";
+import { htmlExcerpt } from "@/lib/html-text";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +27,12 @@ export const Route = createFileRoute("/_authenticated/collections")({
 });
 
 /**
- * Owner-facing list of all collections (drafts AND published). Visually
- * mirrors the dashboard so creators can navigate between guides and
- * collections without re-learning the UI.
+ * Owner-facing list of all collections (drafts AND published).
+ *
+ * Visually mirrors the dashboard so creators can navigate between guides
+ * and collections without re-learning the UI. Each card shows a copy-link
+ * button when the collection is public; drafts surface a "Draft" badge
+ * instead since they have no shareable URL.
  */
 function CollectionsList() {
   const { user } = useAuth();
@@ -36,12 +41,13 @@ function CollectionsList() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      // Count of guides per collection comes back as a relational aggregate.
-      // The Supabase client returns it as `collection_guides: [{ count: N }]`
-      // because we asked for a relational count rather than scalar.
+      // Count of guides per collection is an inverse relational aggregate
+      // against the `guides` table now that the junction is gone. We count
+      // ALL of the owner's guides (drafts included) here since this is the
+      // owner-facing list — public-facing surfaces count only published.
       const { data, error } = await supabase
         .from("collections")
-        .select("id, title, description, is_public, collection_guides(count)")
+        .select("id, title, description, is_public, guides(count)")
         .eq("owner_id", user.id)
         .order("updated_at", { ascending: false });
       if (error) {
@@ -53,14 +59,14 @@ function CollectionsList() {
         title: string;
         description: string;
         is_public: boolean;
-        collection_guides?: { count: number }[];
+        guides?: { count: number }[];
       };
       const items: CollectionListItem[] = ((data as Row[]) ?? []).map((r) => ({
         id: r.id,
         title: r.title,
         description: r.description,
         is_public: r.is_public,
-        guide_count: r.collection_guides?.[0]?.count ?? 0,
+        guide_count: r.guides?.[0]?.count ?? 0,
       }));
       setState({ status: "ok", items });
     })();
@@ -74,7 +80,7 @@ function CollectionsList() {
             <Folders className="h-7 w-7" /> Your collections
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Group guides into shareable lists — "Beginner comps", "Patch 14.3 meta", etc.
+            Group guides into shareable folders — "Beginner comps", "Patch 14.3 meta", etc.
           </p>
         </div>
         <Button asChild>
@@ -101,20 +107,35 @@ function CollectionsList() {
       {state.status === "ok" && state.items.length > 0 && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {state.items.map((c) => (
-            <Link key={c.id} to="/collections/$id/edit" params={{ id: c.id }}>
+            <Link
+              key={c.id}
+              to="/collections/$id/edit"
+              params={{ id: c.id }}
+              className="block h-full"
+            >
               <Card className="hover:border-primary/50 transition-colors h-full">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-lg leading-tight">{c.title}</CardTitle>
-                    {c.is_public ? (
-                      <Badge variant="default" className="shrink-0">
-                        <Globe className="h-3 w-3 mr-1" /> Public
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="shrink-0">
-                        <Lock className="h-3 w-3 mr-1" /> Draft
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {c.is_public ? (
+                        <Badge variant="default">
+                          <Globe className="h-3 w-3 mr-1" /> Public
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          <Lock className="h-3 w-3 mr-1" /> Draft
+                        </Badge>
+                      )}
+                      {c.is_public && (
+                        <CopyLinkButton
+                          href={`/collection/${c.id}`}
+                          iconOnly
+                          variant="ghost"
+                          stopPropagation
+                        />
+                      )}
+                    </div>
                   </div>
                   <Badge variant="outline" className="self-start mt-1">
                     {c.guide_count} {c.guide_count === 1 ? "guide" : "guides"}
@@ -122,7 +143,9 @@ function CollectionsList() {
                 </CardHeader>
                 {c.description && (
                   <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{c.description}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {htmlExcerpt(c.description, 140)}
+                    </p>
                   </CardContent>
                 )}
               </Card>

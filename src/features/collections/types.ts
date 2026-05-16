@@ -32,7 +32,8 @@ export type CollectionSummary = Pick<
   CollectionRow,
   "id" | "title" | "description" | "is_public" | "updated_at"
 > & {
-  // Count is derived from the junction; not stored on the row itself.
+  // Count is derived from a relational aggregate against guides.collection_id,
+  // not stored on the row itself.
   guide_count: number;
 };
 
