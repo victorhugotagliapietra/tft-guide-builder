@@ -6,6 +6,7 @@ import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { generatePlannerCode, type PlannerCodeMap } from "@/features/tft-data/planner-code";
+import type { TFTChampion } from "@/features/tft-data/types";
 import {
   boardStepSchema,
   STEP_TYPE_LABELS,
@@ -103,18 +104,28 @@ function ReadOnlyStepCard({
   step,
   setNumber,
   plannerCodeMap,
+  championMap,
   defaultExpanded,
 }: {
   step: BoardStep;
   setNumber: number;
   plannerCodeMap: PlannerCodeMap;
+  championMap: Map<string, TFTChampion>;
   defaultExpanded: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   function handleCopyPlannerCode(e: React.MouseEvent) {
     e.stopPropagation(); // keep the toggle from firing when clicking inside the header
-    const result = generatePlannerCode(step.units, setNumber, plannerCodeMap);
+    const result = generatePlannerCode(
+      step.units,
+      setNumber,
+      plannerCodeMap,
+      (apiName) => {
+        const c = championMap.get(apiName);
+        return c ? { cost: c.cost } : undefined;
+      }
+    );
     if (!result.ok) {
       toast.error(result.error);
       return;
@@ -247,7 +258,7 @@ function ReadOnlyStepCard({
 function PublicGuide() {
   const { slug } = Route.useParams();
   const [state, setState] = useState<PageState>({ status: "loading" });
-  const { setNumber: cdnSetNumber, plannerCodeMap } = useTFTData();
+  const { setNumber: cdnSetNumber, plannerCodeMap, championMap } = useTFTData();
 
   useEffect(() => {
     supabase
@@ -420,6 +431,7 @@ function PublicGuide() {
                   step={step}
                   setNumber={setNumber}
                   plannerCodeMap={plannerCodeMap}
+                  championMap={championMap}
                   defaultExpanded={defaultExpanded}
                 />
               ))}

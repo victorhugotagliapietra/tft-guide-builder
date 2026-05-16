@@ -900,7 +900,18 @@ export function BoardStepCard({
   }
 
   function handleCopyPlannerCode() {
-    const result = generatePlannerCode(step.units, setNumber, plannerCodeMap);
+    // The encoder needs each champion's cost for its (cost ASC, apiName ASC)
+    // sort. We expose championMap.get as the lookup so the codec stays free
+    // of TFTChampion type imports.
+    const result = generatePlannerCode(
+      step.units,
+      setNumber,
+      plannerCodeMap,
+      (apiName) => {
+        const c = championMap.get(apiName);
+        return c ? { cost: c.cost } : undefined;
+      }
+    );
     if (!result.ok) { toast.error(result.error); return; }
     navigator.clipboard.writeText(result.code).then(
       () => toast.success("Planner code copied!"),

@@ -1,64 +1,73 @@
 /**
- * TFT in-game team-planner code codec (format v01).
+ * TFT in-game team-planner code codec.
  *
- * Emits codes that paste directly into the TFT client's Team Planner UI.
- * Format documented at:
- *   https://gist.github.com/xrr2016/22fa6e92278a2481f9026f6456b0afa4
- *
- * ───────────────────────────────────────────────────────────────────────────
- * WIRE FORMAT (v01)
- * ───────────────────────────────────────────────────────────────────────────
- *
- *   01 + <10 × 2 hex chars> + TFTSet<N>
- *
- *   - "01"          version prefix.
- *   - 10 slots      one per max team-size unit at level 10. Each slot is
- *                   exactly 2 hex chars (1 byte) containing the champion's
- *                   ALPHABETIC INDEX in the current set (1-indexed). The
- *                   index is derived from `tftchampions-teamplanner.json`:
- *                   take every `character_id` for the current set, sort
- *                   ascending, and assign positions starting at 1.
- *   - 0x00          reserved as the empty-slot sentinel. Blank slots are
- *                   pushed to the end on import per the gist spec.
- *   - "TFTSet<N>"   literal set suffix.
- *
- * Total length for any set: 2 + 20 + 8 = 30 chars. The format is
- * deliberately compact — there are NO position bits, NO star bits, NO
- * item / augment bits. The in-game planner reads the code as a team
- * roster only; the player places champions on the board themselves.
- *
- * That's a fundamental property of the wire format, not a limitation of
- * this codec. Star level, equipped items, augments, and board positions
- * stay intact in our guide's JSONB record — the planner code is just one
- * narrow export view.
+ * Reverse-engineered against a known-good Riot export sample provided by
+ * the user. The format is verified end-to-end: re-encoding the sample's
+ * board state with this codec produces the exact byte sequence.
  *
  * ───────────────────────────────────────────────────────────────────────────
- * KNOWN-GOOD EXAMPLES
+ * WIRE FORMAT (verified)
  * ───────────────────────────────────────────────────────────────────────────
  *
- * Gist worked example (Set 13):
- *   010102030405060708090ATFTSet13
- *   → Akali (1), Ambessa (2), Amumu (3), … Bel'Veth (10) — the first 10
- *     champions alphabetically in Set 13.
+ *   02 + <10 × 3 hex chars> + TFTSet<N>
+ *
+ *   - "02" version prefix (Set 9+ format).
+ *
+ *   - 10 slots, each 3 hex characters = 12 bits per slot. Each slot value
+ *     is the champion's `team_planner_code` from CDragon's
+ *     `tftchampions-teamplanner.json` for the current set, written as a
+ *     lowercase, zero-padded hex string. Empty slots are `000`.
+ *
+ *     12 bits accommodates codes 0–4095, comfortably covering every Set
+ *     17 code (max 104) and headroom for future sets.
+ *
+ *   - "TFTSet<N>" literal set suffix.
+ *
+ *   - Slot ORDERING (verified against the Riot sample): cost ASCENDING,
+ *     then character_id ASCENDING alphabetic within each cost. Position
+ *     on the board is NOT encoded — the TFT client treats the code as a
+ *     team roster and lets the player place units on import.
+ *
+ *   - Champions are deduplicated by character_id before encoding (the TFT
+ *     planner UI lists each champion once even if a board has multiple
+ *     copies for star-up purposes).
+ *
+ *   - Empty / NPC champions whose `team_planner_code` is 0 (e.g. Set 17
+ *     Apex Primordian / `TFT17_Enemy_Aatrox`) are filtered out — code 0
+ *     collides with the empty-slot sentinel.
+ *
+ * Total Set 17 length: 2 + 30 + 8 = 40 chars.
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * KNOWN-GOOD SAMPLE
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   Board: Aatrox(1), Caitlyn(1), Akali(2), Jax(2), Aurora(3), Diana(3), Lulu(3)
+ *   Codes: 29(0x1D), 27(0x1B), 13(0x0D), 44(0x2C), 16(0x10), 67(0x43), 48(0x30)
+ *   Order (cost asc, apiName asc):
+ *     - Cost 1: TFT17_Aatrox(29), TFT17_Caitlyn(27)
+ *     - Cost 2: TFT17_Akali(13), TFT17_Jax(44)
+ *     - Cost 3: TFT17_Aurora(16), TFT17_Diana(67), TFT17_Lulu(48)
+ *   Slots: 01d 01b 00d 02c 010 043 030 000 000 000
+ *   Full:  0201d01b00d02c010043030000000000TFTSet17
  *
  * ───────────────────────────────────────────────────────────────────────────
  * EXCLUSION RULES
  * ───────────────────────────────────────────────────────────────────────────
  *
- * Units that aren't in the team-planner manifest are silently dropped
- * with a debug log. That naturally excludes:
+ * Units that aren't in the team-planner manifest are silently dropped:
  *
- *   - Training Dummy (TFT_TrainingDummy) — synthetic helper unit
- *   - Mini Black Hole, Rift Scuttler, Golden Ox, Blue Sentinel — NPCs
- *   - Any other dummy / summon / utility object that doesn't appear in
- *     CDragon's tftchampions-teamplanner.json for the current set
+ *   - Training Dummy (TFT_TrainingDummy)
+ *   - Mini Black Hole, Rift Scuttler, Golden Ox, Blue Sentinel
+ *   - Any other helper / summon / NPC unit
  *
- * Plus explicit drops:
+ * Explicitly dropped at encode time:
  *
- *   - Alphabetic index === 0 (sentinel collision)
- *   - Alphabetic index > 255 (won't fit a 1-byte slot — future-set guard;
- *     no current set has > 255 playable champions)
- *   - Units beyond the planner's 10-slot maximum (excess sorted out)
+ *   - team_planner_code === 0 (sentinel collision; e.g. Apex Primordian)
+ *   - team_planner_code > 4095 (out of 12-bit range; future-set guard)
+ *   - Positions outside 0–27 (defensive)
+ *   - Duplicate apiNames after the first occurrence
+ *   - Units beyond the planner's 10-slot maximum after dedup + sort
  */
 
 import type { BoardUnit } from "@/features/board-builder/types";
@@ -71,12 +80,19 @@ export type PlannerResult =
   | { ok: true; code: string }
   | { ok: false; error: string };
 
-/** apiName → 1-indexed alphabetic position in the current set. */
+/** apiName → team_planner_code (12-bit value). */
 export type PlannerCodeMap = Map<string, number>;
+
+/**
+ * Minimal champion-info lookup the encoder needs for sorting. The caller
+ * passes a function rather than a Map<TFTChampion> so this file stays free
+ * of UI-layer type imports.
+ */
+export type ChampionInfoLookup = (apiName: string) => { cost: number } | undefined;
 
 export type DecodedPlannerUnit = {
   championKey: string;
-  /** Slot index 0–9 in the original code (preserved for stable order). */
+  /** Slot index 0–9 in the original code (preserved for stable ordering). */
   slot: number;
 };
 
@@ -89,16 +105,16 @@ export type DecodedPlannerPayload = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const VERSION_PREFIX = "01";
-const SLOT_COUNT = 10;            // max team size at level 10
-const SLOT_HEX_CHARS = 2;         // 1 byte per slot
-const EMPTY_SLOT = "00";
-const MAX_INDEX = 255;            // 8-bit slot limit
-const HEX_PAYLOAD_LENGTH = SLOT_COUNT * SLOT_HEX_CHARS; // 20
+const VERSION_PREFIX = "02";
+const SLOT_COUNT = 10;
+const SLOT_HEX_CHARS = 3; // 12 bits per slot
+const EMPTY_SLOT = "000";
+const MAX_CODE = (1 << 12) - 1; // 4095
+const HEX_PAYLOAD_LENGTH = SLOT_COUNT * SLOT_HEX_CHARS; // 30
 
-// "01" + exactly 20 hex chars + "TFTSet<digits>" (whitespace-tolerant
-// canonical form; the decoder strips whitespace and accepts mixed case).
-const PLANNER_CODE_RE = /^01([0-9a-fA-F]{20})TFTSet(\d+)$/;
+// "02" + exactly 30 hex chars + "TFTSet<digits>" — whitespace-tolerant,
+// case-insensitive on the hex bytes (canonical output is lowercase).
+const PLANNER_CODE_RE = /^02([0-9a-fA-F]{30})TFTSet(\d+)$/;
 
 // ---------------------------------------------------------------------------
 // Encode
@@ -108,20 +124,21 @@ const PLANNER_CODE_RE = /^01([0-9a-fA-F]{20})TFTSet(\d+)$/;
  * Generate a TFT in-game team-planner code from a board state.
  *
  * Pipeline:
- *   1. Filter to units whose championKey has an alphabetic index in
- *      `plannerCodeMap` (drops Training Dummy / NPCs / helper units).
- *   2. Validate each index fits 1 byte (1–255).
- *   3. Sort by board position so the same board always produces the same
- *      code (the planner format itself doesn't encode position, but stable
- *      ordering keeps the output reproducible for diffing / caching).
- *   4. Take the first 10 (planner's max).
- *   5. Emit `01` + 10 × 2-hex-char slots + `TFTSet<N>`.
- *   6. Self-validate against the canonical regex.
+ *   1. Filter to units whose championKey has a team_planner_code in the map
+ *      AND whose championLookup yields a cost (filters out Training Dummy,
+ *      NPCs, helper units).
+ *   2. Drop code 0 (empty sentinel collision) and codes > 4095.
+ *   3. Deduplicate by championKey (TFT planner UI lists each champion once).
+ *   4. Sort by (cost ASC, championKey ASC) — matches the Riot sample order.
+ *   5. Cap at 10 (planner's max team size).
+ *   6. Emit `02` + 10 × 3-hex-char slots (lowercase, zero-padded) + `TFTSet<N>`.
+ *   7. Self-validate against the canonical regex before returning.
  */
 export function generatePlannerCode(
   units: BoardUnit[],
   setNumber: number,
-  plannerCodeMap: PlannerCodeMap
+  plannerCodeMap: PlannerCodeMap,
+  championLookup: ChampionInfoLookup
 ): PlannerResult {
   if (!units || units.length === 0) {
     return { ok: false, error: "Board is empty — add at least one champion." };
@@ -137,7 +154,7 @@ export function generatePlannerCode(
   }
 
   // ── Phase 1: filter to exportable units ─────────────────────────────────
-  type Exportable = { position: number; championKey: string; index: number };
+  type Exportable = { apiName: string; cost: number; code: number };
   const exportable: Exportable[] = [];
   const skipped: { championKey: string; reason: string }[] = [];
 
@@ -146,17 +163,28 @@ export function generatePlannerCode(
       skipped.push({ championKey: u.championKey, reason: `bad position ${u.position}` });
       continue;
     }
-    const index = plannerCodeMap.get(u.championKey);
-    if (typeof index !== "number") {
-      // Not in the team-planner manifest — Training Dummy / NPC / helper.
+    const code = plannerCodeMap.get(u.championKey);
+    if (typeof code !== "number") {
+      // Training Dummy / Mini Black Hole / Rift Scuttler / helper units
+      // aren't in CDragon's team-planner manifest, so they hit this branch
+      // and are silently dropped.
       skipped.push({ championKey: u.championKey, reason: "not in team-planner manifest" });
       continue;
     }
-    if (index <= 0 || index > MAX_INDEX) {
-      skipped.push({ championKey: u.championKey, reason: `index ${index} out of byte range` });
+    if (code === 0) {
+      skipped.push({ championKey: u.championKey, reason: "code 0 reserved (empty sentinel)" });
       continue;
     }
-    exportable.push({ position: u.position, championKey: u.championKey, index });
+    if (code < 0 || code > MAX_CODE) {
+      skipped.push({ championKey: u.championKey, reason: `code ${code} out of 12-bit range` });
+      continue;
+    }
+    const info = championLookup(u.championKey);
+    if (!info) {
+      skipped.push({ championKey: u.championKey, reason: "no champion info (cost unknown)" });
+      continue;
+    }
+    exportable.push({ apiName: u.championKey, cost: info.cost, code });
   }
 
   if (exportable.length === 0) {
@@ -169,27 +197,43 @@ export function generatePlannerCode(
     };
   }
 
-  // ── Phase 2: deterministic ordering ─────────────────────────────────────
-  exportable.sort((a, b) => a.position - b.position);
+  // ── Phase 2: deduplicate by apiName ─────────────────────────────────────
+  // TFT's team planner shows each champion once even if a board has multiple
+  // copies for star-up. Keep the first occurrence per apiName.
+  const seen = new Set<string>();
+  const deduped: Exportable[] = [];
+  for (const e of exportable) {
+    if (seen.has(e.apiName)) continue;
+    seen.add(e.apiName);
+    deduped.push(e);
+  }
 
-  if (exportable.length > SLOT_COUNT) {
-    const overflow = exportable.length - SLOT_COUNT;
+  // ── Phase 3: sort (cost ASC, apiName ASC) ───────────────────────────────
+  // Matches the Riot sample exactly: cost-1 champs first (alphabetically
+  // within cost), then cost-2, etc.
+  deduped.sort((a, b) => {
+    if (a.cost !== b.cost) return a.cost - b.cost;
+    return a.apiName.localeCompare(b.apiName);
+  });
+
+  if (deduped.length > SLOT_COUNT) {
+    const overflow = deduped.length - SLOT_COUNT;
     console.warn(
-      `[planner-code] board has ${exportable.length} valid units; dropping ${overflow} ` +
-      "beyond the planner's 10-slot maximum"
+      `[planner-code] board has ${deduped.length} unique champions; ` +
+      `dropping ${overflow} beyond the planner's 10-slot max`
     );
   }
-  const toExport = exportable.slice(0, SLOT_COUNT);
+  const toExport = deduped.slice(0, SLOT_COUNT);
 
-  // ── Phase 3: emit 1-byte slots, pad to 10 ────────────────────────────────
+  // ── Phase 4: emit slot hex (lowercase, zero-padded to 3 chars) ──────────
   const slots: string[] = toExport.map((u) =>
-    u.index.toString(16).padStart(SLOT_HEX_CHARS, "0").toUpperCase()
+    u.code.toString(16).padStart(SLOT_HEX_CHARS, "0").toLowerCase()
   );
   while (slots.length < SLOT_COUNT) slots.push(EMPTY_SLOT);
 
   const code = `${VERSION_PREFIX}${slots.join("")}TFTSet${setNumber}`;
 
-  // ── Phase 4: self-validate ──────────────────────────────────────────────
+  // ── Phase 5: self-validate ──────────────────────────────────────────────
   if (!PLANNER_CODE_RE.test(code)) {
     return {
       ok: false,
@@ -197,17 +241,21 @@ export function generatePlannerCode(
     };
   }
 
-  // Support-friendly debug log.
-  if (skipped.length > 0) {
-    console.debug(
-      `[planner-code] generated ${code} ` +
-      `(encoded=${toExport.length}, skipped=${skipped.length}: ` +
-      skipped.map((s) => `${s.championKey}[${s.reason}]`).join(", ") +
-      ")"
-    );
-  } else {
-    console.debug(`[planner-code] generated ${code} (encoded=${toExport.length})`);
-  }
+  // Support-friendly debug log — each champion's apiName + resolved code +
+  // final packed payload + the canonical 40-char output. Lets a paste-failure
+  // report be diagnosed straight from console logs.
+  const breakdown = toExport
+    .map((u) => `${u.apiName}(cost=${u.cost}, code=${u.code}=0x${u.code.toString(16)})`)
+    .join(" | ");
+  console.debug(
+    `[planner-code] generated ${code} ` +
+    `(encoded=${toExport.length}, skipped=${skipped.length}, ` +
+    `payload="${slots.join("")}")` +
+    (toExport.length > 0 ? ` | ${breakdown}` : "") +
+    (skipped.length > 0
+      ? ` | dropped: ${skipped.map((s) => `${s.championKey}[${s.reason}]`).join(", ")}`
+      : "")
+  );
 
   return { ok: true, code };
 }
@@ -217,10 +265,11 @@ export function generatePlannerCode(
 // ---------------------------------------------------------------------------
 
 /**
- * Decode a v01 planner code back into champion entries.
+ * Decode a v02 planner code into champion entries.
  *
  * Returns `{ ok: false }` for any input that doesn't match the canonical
- * format. Whitespace-tolerant and case-insensitive on the hex bytes.
+ * 40-char Set 17 shape. Whitespace-tolerant and case-insensitive on the
+ * hex bytes.
  */
 export function decodePlannerCode(
   code: string,
@@ -235,28 +284,28 @@ export function decodePlannerCode(
     return {
       ok: false,
       error:
-        'Code must be "01<20 hex chars>TFTSet<N>" — got ' +
+        'Code must be "02<30 hex chars>TFTSet<N>" — got ' +
         `${trimmed.slice(0, 10)}…(${trimmed.length} chars)`,
     };
   }
   const hex = match[1];
   const set = parseInt(match[2], 10);
 
-  // Reverse map (index → apiName) built once per decode.
+  // Reverse map built once per decode (~60 entries, negligible cost).
   const reverse = new Map<number, string>();
-  for (const [apiName, index] of plannerCodeMap) {
-    if (index > 0 && index <= MAX_INDEX) reverse.set(index, apiName);
+  for (const [apiName, code] of plannerCodeMap) {
+    if (code > 0 && code <= MAX_CODE) reverse.set(code, apiName);
   }
 
   const units: DecodedPlannerUnit[] = [];
   for (let slot = 0; slot < SLOT_COUNT; slot++) {
-    const byteHex = hex.substring(slot * SLOT_HEX_CHARS, (slot + 1) * SLOT_HEX_CHARS);
-    const byte = parseInt(byteHex, 16);
-    if (byte === 0) continue; // empty slot
-    const championKey = reverse.get(byte);
+    const slotHex = hex.substring(slot * SLOT_HEX_CHARS, (slot + 1) * SLOT_HEX_CHARS);
+    const value = parseInt(slotHex, 16);
+    if (value === 0) continue; // empty slot
+    const championKey = reverse.get(value);
     if (!championKey) {
       console.warn(
-        `[planner-code] unknown index ${byte} in slot ${slot} (set ${set})`
+        `[planner-code] unknown code ${value} (0x${value.toString(16)}) in slot ${slot} (set ${set})`
       );
       continue;
     }
@@ -270,9 +319,14 @@ export function decodePlannerCode(
 // Self-test (development-only)
 // ---------------------------------------------------------------------------
 //
-// Verifies the codec against the gist's worked example AND a roundtrip on
-// a synthetic 3-unit fixture. Gated on `process.env.NODE_ENV !==
-// "production"` so Vite strips this block from production bundles.
+// Two roundtrip fixtures verify the codec against the user-provided sample:
+//
+//   - Fixture A: decode the known-good Riot Set 17 sample
+//   - Fixture B: encode the same board (Aatrox/Caitlyn/Akali/Jax/Aurora/
+//                Diana/Lulu) and assert byte-for-byte equality with the
+//                sample, plus roundtrip through the decoder
+//
+// Vite statically strips this block from production bundles.
 
 if (
   typeof process !== "undefined" &&
@@ -280,76 +334,69 @@ if (
   typeof globalThis !== "undefined"
 ) {
   try {
-    // Fixture A: gist's documented Set 13 example.
-    //   010102030405060708090ATFTSet13
-    //   → indices 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-    // We don't need real Set 13 character_ids here — the decoder just
-    // verifies the byte → reverse-map lookup works.
-    const fixtureMap: PlannerCodeMap = new Map([
-      ["TFTSet13_Akali", 1],
-      ["TFTSet13_Ambessa", 2],
-      ["TFTSet13_Amumu", 3],
-      ["TFTSet13_Annie", 4],
-      ["TFTSet13_Camille", 5],
-      ["TFTSet13_Cassiopeia", 6],
-      ["TFTSet13_Corki", 7],
-      ["TFTSet13_Darius", 8],
-      ["TFTSet13_DrMundo", 9],
-      ["TFTSet13_Ekko", 10],
+    // Set 17 codes for the user's sample board (verbatim from the JSON
+    // provided in context/PLANNERCODES.txt).
+    const sampleMap: PlannerCodeMap = new Map([
+      ["TFT17_Aatrox", 29],
+      ["TFT17_Caitlyn", 27],
+      ["TFT17_Akali", 13],
+      ["TFT17_Jax", 44],
+      ["TFT17_Aurora", 16],
+      ["TFT17_Diana", 67],
+      ["TFT17_Lulu", 48],
     ]);
-    const gistExample = "010102030405060708090ATFTSet13";
-    const decA = decodePlannerCode(gistExample, fixtureMap);
+    const sampleCostLookup: ChampionInfoLookup = (api) => {
+      const costs: Record<string, number> = {
+        TFT17_Aatrox: 1, TFT17_Caitlyn: 1,
+        TFT17_Akali: 2, TFT17_Jax: 2,
+        TFT17_Aurora: 3, TFT17_Diana: 3, TFT17_Lulu: 3,
+      };
+      return costs[api] !== undefined ? { cost: costs[api] } : undefined;
+    };
+    const knownGood = "0201d01b00d02c010043030000000000TFTSet17";
+
+    // Fixture A: decode the sample. Should yield 7 units in slot order.
+    const decA = decodePlannerCode(knownGood, sampleMap);
     if (!decA.ok) {
-      console.error("[planner-code self-test A] decode of gist example failed:", decA.error);
-    } else if (decA.payload.set !== 13 || decA.payload.units.length !== 10) {
-      console.error("[planner-code self-test A] decoded wrong shape:", decA.payload);
+      console.error("[planner-code self-test A] decode of known sample failed:", decA.error);
+    } else if (decA.payload.set !== 17 || decA.payload.units.length !== 7) {
+      console.error("[planner-code self-test A] wrong shape:", decA.payload);
     } else {
       console.debug(
-        `[planner-code self-test A] decoded gist example: set=${decA.payload.set}, ` +
-        `${decA.payload.units.length} units`
+        `[planner-code self-test A] decoded Riot sample: set=${decA.payload.set}, ` +
+        `${decA.payload.units.length} units (` +
+        decA.payload.units.map((u) => `${u.championKey}@slot${u.slot}`).join(", ") +
+        ")"
       );
     }
 
-    // Fixture B: encode a board → decode → assert identity.
-    const setSeventeenMap: PlannerCodeMap = new Map([
-      ["TFT17_Aatrox", 1],
-      ["TFT17_Akali", 2],
-      ["TFT17_Galio", 16],
-    ]);
+    // Fixture B: encode the same board (positions arbitrary — sort uses
+    // cost+apiName, not position) and assert byte-for-byte equality.
     const fixtureUnits: BoardUnit[] = [
-      { id: "a", championKey: "TFT17_Aatrox", position: 3, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "b", championKey: "TFT17_Akali", position: 10, items: [], starLevel: 2, isCarry: false, isItemHolder: false },
-      { id: "c", championKey: "TFT17_Galio", position: 24, items: [], starLevel: 3, isCarry: false, isItemHolder: false },
+      { id: "1", championKey: "TFT17_Diana",    position:  3, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "2", championKey: "TFT17_Lulu",     position:  4, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "3", championKey: "TFT17_Aatrox",   position:  5, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "4", championKey: "TFT17_Jax",      position: 10, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "5", championKey: "TFT17_Caitlyn",  position: 14, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "6", championKey: "TFT17_Akali",    position: 16, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      { id: "7", championKey: "TFT17_Aurora",   position: 20, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
     ];
-    const encB = generatePlannerCode(fixtureUnits, 17, setSeventeenMap);
+    const encB = generatePlannerCode(fixtureUnits, 17, sampleMap, sampleCostLookup);
     if (!encB.ok) {
       console.error("[planner-code self-test B] encode failed:", encB.error);
     } else {
-      // Aatrox at pos 3 → index 1 → byte 01
-      // Akali  at pos 10 → index 2 → byte 02
-      // Galio  at pos 24 → index 16 → byte 10
-      // Slots: 01 02 10 00 00 00 00 00 00 00 → 20-char middle
-      // Full:  "01" prefix + 20-char middle + "TFTSet17" suffix = 30 chars
-      const expected = "0101021000000000000000TFTSet17";
-      const okShape = encB.code === expected;
-      const okLength = encB.code.length === 30;
-      const okSuffix = encB.code.endsWith("TFTSet17");
-      const okPrefix = encB.code.startsWith("01");
-      const decB = decodePlannerCode(encB.code, setSeventeenMap);
-      const okRoundtrip = decB.ok && decB.payload.set === 17 && decB.payload.units.length === 3;
-      if (okShape && okLength && okSuffix && okPrefix && okRoundtrip) {
-        console.debug("[planner-code self-test B] roundtrip OK:", encB.code);
+      const ok = encB.code === knownGood;
+      if (ok) {
+        console.debug("[planner-code self-test B] encoder matches Riot sample:", encB.code);
       } else {
-        console.error("[planner-code self-test B] roundtrip MISMATCH", {
-          code: encB.code,
-          expected,
-          okShape,
-          okLength,
-          okSuffix,
-          okPrefix,
-          okRoundtrip,
-          decoded: decB.ok ? decB.payload : (decB as { ok: false; error: string }).error,
+        console.error("[planner-code self-test B] encoder MISMATCH", {
+          got: encB.code,
+          expected: knownGood,
         });
+      }
+      const decB = decodePlannerCode(encB.code, sampleMap);
+      if (!decB.ok || decB.payload.units.length !== 7) {
+        console.error("[planner-code self-test B] roundtrip decode failed:", decB);
       }
     }
   } catch (e) {
