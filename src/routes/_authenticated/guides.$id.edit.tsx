@@ -4,10 +4,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Globe, Lock, Trash2, ExternalLink, Copy } from "lucide-react";
+import { Globe, Lock, Trash2, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { guideFormSchema, type GuideFormValues } from "@/features/guides/types";
+import { CollectionPicker } from "@/features/collections/CollectionPicker";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { boardStepSchema } from "@/features/board-builder/types";
 import { useBoardSteps } from "@/features/board-builder/use-board-steps";
 import { BoardStepList } from "@/features/board-builder/BoardStepList";
@@ -48,6 +50,10 @@ function EditGuide() {
   const { user } = useAuth();
   const [slug, setSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Collection assignment is intentionally outside the zod form so the
+  // CollectionPicker can manage its own modal + option-list refresh without
+  // routing every Supabase write through react-hook-form state.
+  const [collectionId, setCollectionId] = useState<string | null>(null);
 
   const form = useForm<GuideFormValues>({
     resolver: zodResolver(guideFormSchema),
@@ -78,7 +84,7 @@ function EditGuide() {
     supabase
       .from("guides")
       .select(
-        "author_id, slug, title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, is_public, board_steps"
+        "author_id, slug, title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, is_public, board_steps, collection_id"
       )
       .eq("id", id)
       .single()
@@ -94,6 +100,7 @@ function EditGuide() {
           return;
         }
         setSlug(data.slug);
+        setCollectionId(data.collection_id ?? null);
         reset({
           title: data.title,
           description: data.description ?? "",
@@ -123,6 +130,10 @@ function EditGuide() {
         final_comp_notes: values.final_comp_notes,
         is_public: values.is_public,
         board_steps: steps,
+        // null = "no collection". Reassigning to a different collection
+        // resets collection_position to 0 so the guide lands at the top of
+        // the new folder; the owner can drag-reorder afterwards.
+        collection_id: collectionId,
       })
       .eq("id", id);
 
@@ -170,20 +181,7 @@ function EditGuide() {
                   <ExternalLink className="h-4 w-4 mr-1" /> View public
                 </Link>
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const url = `${window.location.origin}/g/${slug}`;
-                  navigator.clipboard
-                    .writeText(url)
-                    .then(() => toast.success("Link copied!"))
-                    .catch(() => toast.error("Failed to copy link"));
-                }}
-              >
-                <Copy className="h-4 w-4 mr-1" /> Copy link
-              </Button>
+              <CopyLinkButton href={`/g/${slug}`} variant="outline" stopPropagation={false} />
             </>
           )}
           <AlertDialog>
@@ -257,6 +255,15 @@ function EditGuide() {
                   </FormItem>
                 )}
               />
+              {user && (
+                <CollectionPicker
+                  ownerId={user.id}
+                  value={collectionId}
+                  onChange={setCollectionId}
+                  label="Collection"
+                  description="Optional — assign this guide to one of your folders so it appears together with related comps."
+                />
+              )}
             </CardContent>
           </Card>
 

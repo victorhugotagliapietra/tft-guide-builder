@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -6,6 +7,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { newGuideSchema } from "@/features/guides/types";
+import { CollectionPicker } from "@/features/collections/CollectionPicker";
 import { makeGuideSlug } from "@/lib/slug";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +27,20 @@ export const Route = createFileRoute("/_authenticated/guides/new")({
 
 type NewGuideValues = z.infer<typeof newGuideSchema>;
 
+/**
+ * Lightweight guide creation form. Two fields:
+ *   - Title (required, schema-validated).
+ *   - Collection (optional folder assignment; defaults to none).
+ *
+ * The collection picker is kept outside the zod form because it manages its
+ * own modal lifecycle and can mutate the local options list after a "Create
+ * collection" inline submit — wiring it through react-hook-form would force
+ * us to round-trip dropdown state into form state unnecessarily.
+ */
 function NewGuide() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [collectionId, setCollectionId] = useState<string | null>(null);
 
   const form = useForm<NewGuideValues>({
     resolver: zodResolver(newGuideSchema),
@@ -42,6 +55,9 @@ function NewGuide() {
         author_id: user.id,
         title: title.trim(),
         slug: makeGuideSlug(title),
+        // collection_id is nullable; sending null is identical to omitting
+        // and matches the "no collection" picker option.
+        collection_id: collectionId,
       })
       .select("id")
       .single();
@@ -75,6 +91,15 @@ function NewGuide() {
                   </FormItem>
                 )}
               />
+              {user && (
+                <CollectionPicker
+                  ownerId={user.id}
+                  value={collectionId}
+                  onChange={setCollectionId}
+                  label="Collection (optional)"
+                  description="Add this guide to a folder. You can change it later."
+                />
+              )}
               <Button
                 type="submit"
                 className="w-full"

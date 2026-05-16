@@ -51,6 +51,24 @@ export function SiteHeader() {
           <span>TFT Guides</span>
         </Link>
         <nav className="flex items-center gap-2">
+          {user && (
+            // Surface the two most-used destinations as top-level buttons so
+            // creators don't have to dig through the avatar menu to switch
+            // between guides and collections. Hidden on small screens — the
+            // dropdown still covers everything there.
+            <div className="hidden sm:flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/dashboard">
+                  <LayoutDashboard className="h-4 w-4 mr-1" /> My Guides
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/collections">
+                  <Folders className="h-4 w-4 mr-1" /> My Collections
+                </Link>
+              </Button>
+            </div>
+          )}
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

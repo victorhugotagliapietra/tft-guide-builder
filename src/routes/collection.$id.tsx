@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { SiteHeader } from "@/components/site-header";
 import { GuideCard } from "@/features/guides/GuideCard";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,9 +43,11 @@ export const Route = createFileRoute("/collection/$id")({
  *     onboarding gate forces one before a collection can be created).
  *   - Nonexistent ID → "missing" state with a link home.
  *
- * The redirect uses the RPC instead of trying to SELECT the collection
- * because RLS blocks anon SELECT on private rows, so the page couldn't
- * otherwise know which profile to bounce to.
+ * Guide listing comes straight from the guides table filtered by
+ * `collection_id = this.id` and sorted by `collection_position`. RLS keeps
+ * drafts invisible to non-owners automatically; the explicit
+ * `is_public` filter on the client is defense in depth and keeps draft IDs
+ * out of anonymous viewers' network responses.
  */
 function CollectionPage() {
   const { id } = Route.useParams();
@@ -53,16 +56,10 @@ function CollectionPage() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
-    // Wait until we know whether there's a session — otherwise we'd race
-    // the owner-render path against the anon-redirect path.
     if (authLoading) return;
     let cancelled = false;
 
     (async () => {
-      // We don't use Supabase's relational embed for owner because the
-      // `collections.owner_id` FK points at `auth.users`, not `profiles`
-      // — so there's no direct relationship Supabase can resolve. Fetching
-      // the profile in a second call is simpler than adding a parallel FK.
       const { data: collection, error } = await supabase
         .from("collections")
         .select("id, owner_id, title, description, is_public")
@@ -74,8 +71,6 @@ function CollectionPage() {
       // No row returned. Two possibilities:
       //   a) The collection doesn't exist at all → show "missing".
       //   b) It exists but RLS hid it from this viewer → redirect via RPC.
-      // The RPC distinguishes those by returning `exists_flag: true` only
-      // when a row actually exists, regardless of is_public.
       if (error || !collection) {
         const { data: redirectInfo } = await supabase.rpc("collection_redirect_info", {
           p_id: id,
@@ -93,42 +88,29 @@ function CollectionPage() {
         return;
       }
 
-      // Collection is visible. Load owner profile + ordered guide IDs from
-      // the junction in parallel. We then fetch the guides themselves with
-      // a single IN-list query — RLS automatically drops any private rows
-      // for non-owner viewers, so a draft guide accidentally added to a
-      // public collection can never leak through this page.
       const isOwner = !!user && user.id === collection.owner_id;
-      const [ownerRes, junctionRes] = await Promise.all([
+
+      // Fetch owner profile + ordered guides in parallel.
+      const [ownerRes, guidesRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("username, display_name, avatar_url")
           .eq("id", collection.owner_id)
           .maybeSingle(),
-        supabase
-          .from("collection_guides")
-          .select("guide_id, position")
-          .eq("collection_id", id)
-          .order("position", { ascending: true }),
+        (() => {
+          // Owner sees all their guides in the folder (drafts included).
+          // Anon viewers only see published ones.
+          const q = supabase
+            .from("guides")
+            .select(
+              "id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at"
+            )
+            .eq("collection_id", id)
+            .order("collection_position", { ascending: true });
+          return isOwner ? q : q.eq("is_public", true);
+        })(),
       ]);
       if (cancelled) return;
-
-      const guideIds = (junctionRes.data ?? []).map((r) => r.guide_id);
-      let guides: GuideSummary[] = [];
-      if (guideIds.length > 0) {
-        const { data: guideRows } = await supabase
-          .from("guides")
-          .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at")
-          .in("id", guideIds);
-        if (cancelled) return;
-        // Re-sort by junction order (Postgres `IN` doesn't preserve it),
-        // and drop drafts unless the viewer is the owner.
-        const orderMap = new Map(guideIds.map((gid, i) => [gid, i]));
-        guides = ((guideRows as GuideSummary[]) ?? [])
-          .filter((g) => isOwner || g.is_public)
-          .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-      }
-      const owner = ownerRes.data ?? null;
 
       setState({
         status: "ok",
@@ -139,8 +121,8 @@ function CollectionPage() {
           title: collection.title,
           description: collection.description,
           is_public: collection.is_public,
-          owner,
-          guides,
+          owner: ownerRes.data ?? null,
+          guides: (guidesRes.data as GuideSummary[]) ?? [],
         },
       });
     })();
@@ -193,6 +175,13 @@ function Body({ view, isOwner }: { view: ViewModel; isOwner: boolean }) {
               {!view.is_public && (
                 <Badge variant="secondary">Draft (only you can see this)</Badge>
               )}
+              {view.is_public && (
+                <CopyLinkButton
+                  href={`/collection/${view.id}`}
+                  variant="outline"
+                  stopPropagation={false}
+                />
+              )}
               {isOwner && (
                 <Button asChild variant="outline" size="sm">
                   <Link to="/collections/$id/edit" params={{ id: view.id }}>
@@ -226,7 +215,7 @@ function Body({ view, isOwner }: { view: ViewModel; isOwner: boolean }) {
         {view.guides.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {isOwner
-              ? "This collection is empty. Add guides from the edit page."
+              ? "This collection is empty. Open any of your guides and pick this collection from the dropdown to add it here."
               : "No published guides in this collection yet."}
           </p>
         ) : (
