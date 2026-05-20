@@ -92,14 +92,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "A workshop for TFT creators. Sketch boards, plan transitions, ship a shareable link.",
       },
       { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "Hexcraft" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Hexcraft — Comps, level by level." },
-      {
-        name: "twitter:description",
-        content:
-          "A workshop for TFT creators. Sketch boards, plan transitions, ship a shareable link.",
-      },
+      { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "TFT Guides — Build & Share Teamfight Tactics Comps" },
+      { name: "description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
+      { property: "og:description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
+      { name: "twitter:description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
     ],
     links: [
       {

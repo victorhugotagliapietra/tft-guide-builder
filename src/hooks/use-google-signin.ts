@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { lovable } from "@/integrations/lovable/index";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Single-button Google sign-in. The OAuth flow with Supabase auto-creates an
@@ -8,7 +8,7 @@ import { lovable } from "@/integrations/lovable/index";
  * email/displayName/avatar from Google land in `user.user_metadata` and the
  * stable identifier is `user.id` (used as `guides.author_id`).
  *
- * `returnTo` is appended to the OAuth redirect_uri so a user who clicked
+ * `returnTo` is appended to the OAuth redirect so a user who clicked
  * "Create guide" while signed out lands directly on /guides/new (or wherever)
  * after Google completes — no dead-end stop on /login.
  */
@@ -18,27 +18,24 @@ export function useGoogleSignIn() {
   const signInWithGoogle = useCallback(async (returnTo?: string) => {
     setSigningIn(true);
     try {
-      // Build absolute redirect URI from current origin + optional path.
-      // The Supabase callback handler will preserve the path after token exchange.
-      const redirectUri =
+      const redirectTo =
         typeof window === "undefined"
           ? undefined
           : returnTo
             ? new URL(returnTo, window.location.origin).toString()
             : window.location.origin;
 
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: redirectUri,
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo },
       });
 
-      if (result.error) {
-        toast.error(result.error.message ?? "Google sign-in failed");
+      if (error) {
+        toast.error(error.message ?? "Google sign-in failed");
         setSigningIn(false);
         return false;
       }
-      // If the OAuth flow redirected the window, control never returns here.
-      if (result.redirected) return true;
-      setSigningIn(false);
+      // signInWithOAuth redirects the window on success; control rarely returns here.
       return true;
     } catch (err) {
       console.error("[auth] Google sign-in threw:", err);
