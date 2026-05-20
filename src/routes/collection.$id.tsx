@@ -43,11 +43,12 @@ export const Route = createFileRoute("/collection/$id")({
  *     onboarding gate forces one before a collection can be created).
  *   - Nonexistent ID → "missing" state with a link home.
  *
- * Guide listing comes straight from the guides table filtered by
- * `collection_id = this.id` and sorted by `collection_position`. RLS keeps
- * drafts invisible to non-owners automatically; the explicit
- * `is_public` filter on the client is defense in depth and keeps draft IDs
- * out of anonymous viewers' network responses.
+ * Guide listing comes from the `collection_guides` junction joined to the
+ * guides table. Membership is many-to-many (a guide can live in any number
+ * of folders), and the junction's `position` column drives display order
+ * within this folder. RLS hides drafts from non-owner viewers automatically;
+ * the explicit `is_public` filter on the client is defense in depth and
+ * keeps draft IDs out of anonymous viewers' network responses.
  */
 function CollectionPage() {
   const { id } = Route.useParams();
@@ -90,27 +91,46 @@ function CollectionPage() {
 
       const isOwner = !!user && user.id === collection.owner_id;
 
-      // Fetch owner profile + ordered guides in parallel.
-      const [ownerRes, guidesRes] = await Promise.all([
+      // Fetch owner profile + ordered junction rows in parallel. Junction
+      // rows give us the ordered guide ids; the actual guide rows come from
+      // a second query that RLS filters automatically (drafts hidden to
+      // non-owner viewers). This two-step is intentional: a single relational
+      // embed would require the `guides` FK to point at the junction, and
+      // the membership table is the source of truth for ordering.
+      const [ownerRes, junctionRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("username, display_name, avatar_url")
           .eq("id", collection.owner_id)
           .maybeSingle(),
-        (() => {
-          // Owner sees all their guides in the folder (drafts included).
-          // Anon viewers only see published ones.
-          const q = supabase
-            .from("guides")
-            .select(
-              "id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at"
-            )
-            .eq("collection_id", id)
-            .order("collection_position", { ascending: true });
-          return isOwner ? q : q.eq("is_public", true);
-        })(),
+        supabase
+          .from("collection_guides")
+          .select("guide_id, position")
+          .eq("collection_id", id)
+          .order("position", { ascending: true }),
       ]);
       if (cancelled) return;
+
+      const positionByGuide = new Map(
+        (junctionRes.data ?? []).map((r) => [r.guide_id, r.position])
+      );
+      const guideIds = Array.from(positionByGuide.keys());
+
+      let guides: GuideSummary[] = [];
+      if (guideIds.length > 0) {
+        const q = supabase
+          .from("guides")
+          .select(
+            "id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at"
+          )
+          .in("id", guideIds);
+        const { data: guideRows } = isOwner ? await q : await q.eq("is_public", true);
+        if (cancelled) return;
+        guides = ((guideRows as GuideSummary[]) ?? []).sort(
+          (a, b) =>
+            (positionByGuide.get(a.id) ?? 0) - (positionByGuide.get(b.id) ?? 0)
+        );
+      }
 
       setState({
         status: "ok",
@@ -122,7 +142,7 @@ function CollectionPage() {
           description: collection.description,
           is_public: collection.is_public,
           owner: ownerRes.data ?? null,
-          guides: (guidesRes.data as GuideSummary[]) ?? [],
+          guides,
         },
       });
     })();

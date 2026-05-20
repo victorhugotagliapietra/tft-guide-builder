@@ -28,19 +28,18 @@ export const Route = createFileRoute("/_authenticated/guides/new")({
 type NewGuideValues = z.infer<typeof newGuideSchema>;
 
 /**
- * Lightweight guide creation form. Two fields:
- *   - Title (required, schema-validated).
- *   - Collection (optional folder assignment; defaults to none).
+ * Two-field guide creation form: title + collection memberships.
  *
- * The collection picker is kept outside the zod form because it manages its
- * own modal lifecycle and can mutate the local options list after a "Create
- * collection" inline submit — wiring it through react-hook-form would force
- * us to round-trip dropdown state into form state unnecessarily.
+ * Collections are tracked in local state (deferred mode) rather than written
+ * through immediately, because the junction rows reference guides.id and
+ * that id doesn't exist until the INSERT below completes. On submit we
+ * create the guide first, then bulk-insert the (collection_id, guide_id)
+ * pairs into collection_guides in a single round-trip.
  */
 function NewGuide() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [collectionId, setCollectionId] = useState<string | null>(null);
+  const [collectionIds, setCollectionIds] = useState<string[]>([]);
 
   const form = useForm<NewGuideValues>({
     resolver: zodResolver(newGuideSchema),
@@ -49,24 +48,41 @@ function NewGuide() {
 
   const onSubmit = async ({ title }: NewGuideValues) => {
     if (!user) return;
-    const { data, error } = await supabase
+    const { data: created, error } = await supabase
       .from("guides")
       .insert({
         author_id: user.id,
         title: title.trim(),
         slug: makeGuideSlug(title),
-        // collection_id is nullable; sending null is identical to omitting
-        // and matches the "no collection" picker option.
-        collection_id: collectionId,
       })
       .select("id")
       .single();
 
-    if (error || !data) {
+    if (error || !created) {
       toast.error(error?.message ?? "Failed to create guide");
       return;
     }
-    navigate({ to: "/guides/$id/edit", params: { id: data.id } });
+
+    // Bulk-insert any selected collection memberships in one round-trip.
+    // Failure here is non-fatal — the guide already exists, so we surface
+    // a warning and let the user fix it from the editor's picker.
+    if (collectionIds.length > 0) {
+      const { error: linkErr } = await supabase
+        .from("collection_guides")
+        .insert(
+          collectionIds.map((cid, position) => ({
+            collection_id: cid,
+            guide_id: created.id,
+            position,
+          }))
+        );
+      if (linkErr) {
+        console.warn("[guides.new] failed to attach collections:", linkErr.message);
+        toast.warning("Guide created, but couldn't attach to all collections.");
+      }
+    }
+
+    navigate({ to: "/guides/$id/edit", params: { id: created.id } });
   };
 
   return (
@@ -94,10 +110,10 @@ function NewGuide() {
               {user && (
                 <CollectionPicker
                   ownerId={user.id}
-                  value={collectionId}
-                  onChange={setCollectionId}
-                  label="Collection (optional)"
-                  description="Add this guide to a folder. You can change it later."
+                  value={collectionIds}
+                  onChange={setCollectionIds}
+                  label="Collections (optional)"
+                  description="Pick one or more folders this guide should appear in. You can change it later."
                 />
               )}
               <Button

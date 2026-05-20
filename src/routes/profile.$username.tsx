@@ -79,27 +79,30 @@ function ProfilePage() {
           .eq("author_id", profile.id)
           .eq("is_public", true)
           .order("updated_at", { ascending: false }),
+        // Public-facing count: rows in the junction (collection_guides) for
+        // this collection. The count includes draft guides (RLS doesn't
+        // restrict junction visibility once the parent collection is
+        // public), so the number is "guides currently linked" rather than
+        // "publicly viewable guides". The tradeoff is acceptable here —
+        // viewers click in to see the actual list, where RLS will hide
+        // drafts anyway.
         supabase
           .from("collections")
-          .select("id, title, description, guides(count)")
+          .select("id, title, description, collection_guides(count)")
           .eq("owner_id", profile.id)
           .eq("is_public", true)
-          .eq("guides.is_public", true)
           .order("updated_at", { ascending: false }),
       ]);
 
       if (cancelled) return;
 
       const guides = (guidesRes.data as GuideSummary[]) ?? [];
-      // Supabase's relational count comes back as `{ count: N }[]` on the
-      // foreign-table key. Normalize into a flat number so the card render
-      // doesn't have to know about the Supabase wire shape.
       const collections: CollectionPreview[] = (collectionsRes.data ?? []).map(
-        (c: { id: string; title: string; description: string; guides?: { count: number }[] }) => ({
+        (c: { id: string; title: string; description: string; collection_guides?: { count: number }[] }) => ({
           id: c.id,
           title: c.title,
           description: c.description,
-          guide_count: c.guides?.[0]?.count ?? 0,
+          guide_count: c.collection_guides?.[0]?.count ?? 0,
         })
       );
 
