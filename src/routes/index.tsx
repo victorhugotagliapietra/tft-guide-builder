@@ -124,7 +124,7 @@ function Index() {
         )}
       </main>
       <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground">
-        Built with Lovable. Not affiliated with Riot Games.
+        Not affiliated with Riot Games.
       </footer>
     </div>
   );

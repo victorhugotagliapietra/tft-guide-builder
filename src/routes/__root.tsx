@@ -88,13 +88,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "TFT Guides — Build & Share Teamfight Tactics Comps" },
       { name: "description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
       { property: "og:description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
       { name: "twitter:description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/4302b98f-b36c-4145-ac47-417fb45b2d5b/id-preview-6996fecc--46623633-6e99-455d-826a-bb29630136a2.lovable.app-1778626800465.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/4302b98f-b36c-4145-ac47-417fb45b2d5b/id-preview-6996fecc--46623633-6e99-455d-826a-bb29630136a2.lovable.app-1778626800465.png" },
     ],
     links: [
       {
