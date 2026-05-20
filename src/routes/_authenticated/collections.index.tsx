@@ -22,7 +22,15 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ok"; items: CollectionListItem[] };
 
-export const Route = createFileRoute("/_authenticated/collections")({
+// NOTE: file is `collections.index.tsx` (not `collections.tsx`) so the
+// TanStack Router file-based plugin treats this as a leaf at /collections
+// rather than a layout wrapping its dot-prefix siblings (collections.new,
+// collections.$id.edit). When named collections.tsx, the plugin auto-promoted
+// it to a parent layout — but with no <Outlet /> rendered, child routes
+// mounted silently invisible (URL changed, page didn't update). The
+// `/_authenticated/collections/` trailing slash on the route ID is the
+// documented convention for index routes.
+export const Route = createFileRoute("/_authenticated/collections/")({
   component: CollectionsList,
 });
 
