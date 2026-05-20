@@ -328,9 +328,9 @@ function PublicGuide() {
   // Update document title when guide loads
   useEffect(() => {
     if (state.status === "ok") {
-      document.title = `${state.guide.title} — TFT Guides`;
+      document.title = `${state.guide.title} — Hexcraft`;
       return () => {
-        document.title = "TFT Guides — Build & Share Teamfight Tactics Comps";
+        document.title = "Hexcraft — Comps, level by level.";
       };
     }
   }, [state]);
@@ -475,7 +475,7 @@ function PublicGuide() {
       </main>
 
       <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
-        Built with TFT Guides
+        Crafted on <Link to="/" className="font-display tracking-tight text-foreground/80 hover:text-foreground">Hexcraft</Link>
       </footer>
     </div>
   );

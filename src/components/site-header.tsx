@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Folders, LayoutDashboard, LogOut, Settings, Swords, User } from "lucide-react";
+import { Folders, LayoutDashboard, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -46,9 +46,13 @@ export function SiteHeader() {
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-40">
       <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-semibold">
-          <Swords className="h-5 w-5 text-primary" />
-          <span>TFT Guides</span>
+        <Link to="/" className="flex items-center gap-2 group">
+          <HexcraftMark className="h-7 w-7" />
+          <span
+            className="font-display text-lg font-semibold tracking-tight text-foreground/95 group-hover:text-foreground transition-colors"
+          >
+            Hexcraft
+          </span>
         </Link>
         <nav className="flex items-center gap-2">
           {user && (
@@ -142,6 +146,39 @@ export function SiteHeader() {
         </nav>
       </div>
     </header>
+  );
+}
+
+/**
+ * Hexcraft brand mark. A hex outline with a single lit hex inside —
+ * "one cell occupied" is the visual shorthand for the editor's atomic
+ * unit. The outer hex uses currentColor so the same SVG works in both
+ * the primary-tinted header treatment and any neutral context (about
+ * page, embed previews, favicons later).
+ */
+function HexcraftMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      fill="none"
+      aria-hidden="true"
+      className={className}
+    >
+      {/* Outer hex stroke — slightly bigger than the inner cell so the
+          composition reads as a board with one occupied tile. */}
+      <path
+        d="M16 2.5 L28 9 L28 23 L16 29.5 L4 23 L4 9 Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+        className="text-primary/70"
+      />
+      {/* Inner lit hex — the "honey" fill. */}
+      <path
+        d="M16 11 L22 14.5 L22 21.5 L16 25 L10 21.5 L10 14.5 Z"
+        className="fill-primary"
+      />
+    </svg>
   );
 }
 

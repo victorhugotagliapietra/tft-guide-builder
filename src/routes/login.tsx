@@ -45,8 +45,13 @@ function LoginPage() {
       <SiteHeader />
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle className="text-center">Sign in to create guides</CardTitle>
+          <CardHeader className="text-center space-y-1">
+            <CardTitle className="font-display text-2xl tracking-tight">
+              Enter the workshop
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Sign in to publish and manage your own guides.
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <Button
@@ -59,9 +64,9 @@ function LoginPage() {
               {signingIn ? "Redirecting…" : "Continue with Google"}
             </Button>
             <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              You only need an account to <strong>create</strong> guides.
+              Reading and sharing guides on Hexcraft is always free and anonymous.
               <br />
-              Browsing and sharing guides is always free and anonymous.
+              You only need an account to <strong>create</strong>.
             </p>
           </CardContent>
         </Card>

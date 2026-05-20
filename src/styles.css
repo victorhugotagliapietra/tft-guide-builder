@@ -5,17 +5,26 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design system definition.
+ * Hexcraft design system.
  *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
+ * Identity:
+ *   - "Ink" base — very dark, faintly cool. Sits closer to pure black than
+ *     a typical slate so the warm primary reads as light spilling onto a
+ *     workbench, not as a UI accent on flat gray.
+ *   - "Honey" primary — saturated warm amber. Used sparingly on CTAs,
+ *     active states, and the brand mark. Picks up the "lit hex" / loot
+ *     drop association without going full gold.
+ *   - "Mint" accent — pale cool green. Pairs against honey as a calm
+ *     informational hue: trait chips, secondary links, success states.
+ *   - Borders + cards use a tiny cool tint so the whole UI feels lit from
+ *     a single direction.
  *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
+ * All colors stay in oklch so lightness/chroma stay perceptually linear
+ * when we layer translucencies (e.g. bg-primary/10 on hover).
  *
  * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ *   1. Add the variable to :root (default theme) and .dark (override if needed)
+ *   2. Register it in @theme inline as --color-<name>: var(--<name>)
  */
 
 @theme inline {
@@ -59,78 +68,106 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Typography. Display = Space Grotesk for headings + the brand mark;
+     body inherits the system stack via the default tailwind sans. */
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
 :root {
-  --radius: 0.625rem;
-  /* Dark gaming-SaaS theme (default) */
-  --background: oklch(0.16 0.012 260);
-  --foreground: oklch(0.97 0.005 250);
-  --card: oklch(0.20 0.014 260);
-  --card-foreground: oklch(0.97 0.005 250);
-  --popover: oklch(0.20 0.014 260);
-  --popover-foreground: oklch(0.97 0.005 250);
-  --primary: oklch(0.78 0.18 75);
-  --primary-foreground: oklch(0.18 0.02 260);
-  --secondary: oklch(0.26 0.02 260);
-  --secondary-foreground: oklch(0.97 0.005 250);
-  --muted: oklch(0.24 0.016 260);
-  --muted-foreground: oklch(0.68 0.02 260);
-  --accent: oklch(0.62 0.20 285);
-  --accent-foreground: oklch(0.98 0.005 250);
-  --destructive: oklch(0.62 0.24 27);
-  --destructive-foreground: oklch(0.98 0.005 250);
-  --border: oklch(0.28 0.02 260);
-  --input: oklch(0.26 0.02 260);
-  --ring: oklch(0.78 0.18 75);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.18 0.014 260);
-  --sidebar-foreground: oklch(0.97 0.005 250);
-  --sidebar-primary: oklch(0.78 0.18 75);
-  --sidebar-primary-foreground: oklch(0.18 0.02 260);
-  --sidebar-accent: oklch(0.26 0.02 260);
-  --sidebar-accent-foreground: oklch(0.97 0.005 250);
-  --sidebar-border: oklch(0.28 0.02 260);
-  --sidebar-ring: oklch(0.78 0.18 75);
+  /* Slightly larger radius than shadcn default — softer cards, less "form" feel. */
+  --radius: 0.75rem;
+
+  /* ---------- Ink (background plate) ---------- */
+  --background: oklch(0.135 0.022 265);
+  --foreground: oklch(0.965 0.005 250);
+
+  /* Cards lift ~5L above the plate with a faint cool tint */
+  --card: oklch(0.185 0.024 265);
+  --card-foreground: oklch(0.965 0.005 250);
+  --popover: oklch(0.205 0.025 265);
+  --popover-foreground: oklch(0.965 0.005 250);
+
+  /* ---------- Honey (primary) ---------- */
+  /* Saturated warm amber, biased to gold. Bright enough to anchor CTAs. */
+  --primary: oklch(0.82 0.155 78);
+  --primary-foreground: oklch(0.18 0.025 60);
+
+  /* Secondary = surface that contrasts with cards without going bright */
+  --secondary: oklch(0.245 0.025 265);
+  --secondary-foreground: oklch(0.965 0.005 250);
+
+  --muted: oklch(0.225 0.022 265);
+  --muted-foreground: oklch(0.72 0.018 260);
+
+  /* ---------- Mint (accent / chips / secondary actions) ---------- */
+  --accent: oklch(0.82 0.115 170);
+  --accent-foreground: oklch(0.18 0.025 250);
+
+  /* Destructive stays in the red corner, slightly warmer than tomato */
+  --destructive: oklch(0.66 0.21 25);
+  --destructive-foreground: oklch(0.985 0.005 250);
+
+  --border: oklch(0.27 0.028 265);
+  --input: oklch(0.245 0.024 265);
+  --ring: oklch(0.82 0.155 78);
+
+  /* Charts — five rotated hues across the wheel, kept high-saturation
+     so step boards / traits / augments are visually distinguishable. */
+  --chart-1: oklch(0.82 0.155 78);   /* honey   */
+  --chart-2: oklch(0.78 0.13 170);   /* mint    */
+  --chart-3: oklch(0.7 0.18 30);     /* persimmon */
+  --chart-4: oklch(0.68 0.18 280);   /* iris    */
+  --chart-5: oklch(0.7 0.14 220);    /* steel-blue */
+
+  /* Sidebar uses the same plate at slightly different lift so a side panel
+     reads as "the same room, a few steps deeper". */
+  --sidebar: oklch(0.165 0.024 265);
+  --sidebar-foreground: oklch(0.965 0.005 250);
+  --sidebar-primary: oklch(0.82 0.155 78);
+  --sidebar-primary-foreground: oklch(0.18 0.025 60);
+  --sidebar-accent: oklch(0.235 0.024 265);
+  --sidebar-accent-foreground: oklch(0.965 0.005 250);
+  --sidebar-border: oklch(0.26 0.028 265);
+  --sidebar-ring: oklch(0.82 0.155 78);
 }
 
+/* The .dark class is used by the root html element. We keep dark = default,
+   but expose the same tokens here so any opt-in light theme later only needs
+   to flip the :root values. */
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: oklch(0.135 0.022 265);
+  --foreground: oklch(0.965 0.005 250);
+  --card: oklch(0.185 0.024 265);
+  --card-foreground: oklch(0.965 0.005 250);
+  --popover: oklch(0.205 0.025 265);
+  --popover-foreground: oklch(0.965 0.005 250);
+  --primary: oklch(0.82 0.155 78);
+  --primary-foreground: oklch(0.18 0.025 60);
+  --secondary: oklch(0.245 0.025 265);
+  --secondary-foreground: oklch(0.965 0.005 250);
+  --muted: oklch(0.225 0.022 265);
+  --muted-foreground: oklch(0.72 0.018 260);
+  --accent: oklch(0.82 0.115 170);
+  --accent-foreground: oklch(0.18 0.025 250);
+  --destructive: oklch(0.66 0.21 25);
+  --destructive-foreground: oklch(0.985 0.005 250);
+  --border: oklch(0.27 0.028 265);
+  --input: oklch(0.245 0.024 265);
+  --ring: oklch(0.82 0.155 78);
+  --chart-1: oklch(0.82 0.155 78);
+  --chart-2: oklch(0.78 0.13 170);
+  --chart-3: oklch(0.7 0.18 30);
+  --chart-4: oklch(0.68 0.18 280);
+  --chart-5: oklch(0.7 0.14 220);
+  --sidebar: oklch(0.165 0.024 265);
+  --sidebar-foreground: oklch(0.965 0.005 250);
+  --sidebar-primary: oklch(0.82 0.155 78);
+  --sidebar-primary-foreground: oklch(0.18 0.025 60);
+  --sidebar-accent: oklch(0.235 0.024 265);
+  --sidebar-accent-foreground: oklch(0.965 0.005 250);
+  --sidebar-border: oklch(0.26 0.028 265);
+  --sidebar-ring: oklch(0.82 0.155 78);
 }
 
 @layer base {
@@ -141,5 +178,53 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    /* Subtle directional vignette: a warm honey glow at top-left fading
+       into the ink plate. Sells the "workbench lit by a single bulb"
+       metaphor without a heavy background image. */
+    background-image:
+      radial-gradient(
+        ellipse 80vw 60vh at 8% -10%,
+        oklch(0.82 0.155 78 / 0.06),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60vw 50vh at 100% 100%,
+        oklch(0.82 0.115 170 / 0.04),
+        transparent 60%
+      );
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Display class — applied on h1/h2 in marketing surfaces. Tighter
+     tracking + heavier weight than the body sans for a stronger
+     editorial feel on the landing/profile hero. */
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  /* Hex grid utility — used as a decorative backdrop on the landing hero.
+     The pattern is a single CSS conic-gradient tiled at a 28×32 cell so
+     the geometry reads as honeycomb without an SVG asset. */
+  .bg-hex-grid {
+    background-color: transparent;
+    background-image:
+      linear-gradient(
+        oklch(0.82 0.155 78 / 0.05) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        90deg,
+        oklch(0.82 0.155 78 / 0.05) 1px,
+        transparent 1px
+      );
+    background-size: 32px 32px;
+    mask-image: radial-gradient(
+      ellipse at center,
+      black 0%,
+      transparent 70%
+    );
   }
 }
