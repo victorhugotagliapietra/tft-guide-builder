@@ -222,11 +222,8 @@ function Index() {
           </section>
         )}
       </main>
-
-      <footer className="border-t border-border/60 py-8">
-        <div className="mx-auto max-w-5xl px-4 flex items-center justify-center text-xs text-muted-foreground">
-          <span className="font-display tracking-tight">Hexcraft</span>
-        </div>
+      <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground">
+        Not affiliated with Riot Games.
       </footer>
     </div>
   );
