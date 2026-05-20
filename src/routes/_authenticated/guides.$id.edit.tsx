@@ -50,10 +50,11 @@ function EditGuide() {
   const { user } = useAuth();
   const [slug, setSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Collection assignment is intentionally outside the zod form so the
-  // CollectionPicker can manage its own modal + option-list refresh without
-  // routing every Supabase write through react-hook-form state.
-  const [collectionId, setCollectionId] = useState<string | null>(null);
+  // Collection memberships are tracked outside the zod form so changes can
+  // round-trip to the junction live (toggle → INSERT/DELETE) without
+  // waiting for the main "Save guide" button. Membership is intrinsically
+  // many-to-many: a guide can sit in any number of the owner's collections.
+  const [collectionIds, setCollectionIds] = useState<string[]>([]);
 
   const form = useForm<GuideFormValues>({
     resolver: zodResolver(guideFormSchema),
@@ -81,43 +82,104 @@ function EditGuide() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("guides")
-      .select(
-        "author_id, slug, title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, is_public, board_steps, collection_id"
-      )
-      .eq("id", id)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          toast.error("Guide not found");
-          navigate({ to: "/dashboard" });
-          return;
-        }
-        if (data.author_id !== user.id) {
-          toast.error("You don't have permission to edit this guide");
-          navigate({ to: "/dashboard" });
-          return;
-        }
-        setSlug(data.slug);
-        setCollectionId(data.collection_id ?? null);
-        reset({
-          title: data.title,
-          description: data.description ?? "",
-          tft_set: data.tft_set ?? "",
-          patch: data.patch ?? "",
-          playstyle: data.playstyle ?? "",
-          difficulty: data.difficulty,
-          final_comp_notes: data.final_comp_notes ?? "",
-          is_public: data.is_public,
-        });
-        const parsed = boardStepsSchema.safeParse(data.board_steps);
-        setSteps(parsed.success ? parsed.data : []);
-        setLoading(false);
+    let cancelled = false;
+    (async () => {
+      // Load the guide row and its current collection memberships in parallel.
+      // The junction query returns only the collection ids; the picker is
+      // responsible for hydrating titles separately so it can show "Folder X"
+      // even when this page hasn't fetched the collection list itself.
+      const [guideRes, memberRes] = await Promise.all([
+        supabase
+          .from("guides")
+          .select(
+            "author_id, slug, title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, is_public, board_steps"
+          )
+          .eq("id", id)
+          .single(),
+        supabase
+          .from("collection_guides")
+          .select("collection_id")
+          .eq("guide_id", id),
+      ]);
+      if (cancelled) return;
+      const { data, error } = guideRes;
+      if (error || !data) {
+        toast.error("Guide not found");
+        navigate({ to: "/dashboard" });
+        return;
+      }
+      if (data.author_id !== user.id) {
+        toast.error("You don't have permission to edit this guide");
+        navigate({ to: "/dashboard" });
+        return;
+      }
+      setSlug(data.slug);
+      setCollectionIds(((memberRes.data ?? []) as { collection_id: string }[]).map((r) => r.collection_id));
+      reset({
+        title: data.title,
+        description: data.description ?? "",
+        tft_set: data.tft_set ?? "",
+        patch: data.patch ?? "",
+        playstyle: data.playstyle ?? "",
+        difficulty: data.difficulty,
+        final_comp_notes: data.final_comp_notes ?? "",
+        is_public: data.is_public,
       });
+      const parsed = boardStepsSchema.safeParse(data.board_steps);
+      setSteps(parsed.success ? parsed.data : []);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id, user, navigate, reset, setSteps]);
 
+  // ----- Live membership sync -----
+  //
+  // The picker is fully controlled (parent owns the array). When the user
+  // toggles a row OR creates a new collection, the new id list arrives via
+  // onChange. We diff it against the previously-known list, then run the
+  // minimum set of INSERT/DELETE statements to bring the junction in sync.
+  // RLS rejects writes against collections the user doesn't own, so we
+  // don't have to defend against that here.
+  const handleCollectionsChange = async (next: string[]) => {
+    const prev = collectionIds;
+    setCollectionIds(next); // optimistic
+    const added = next.filter((cid) => !prev.includes(cid));
+    const removed = prev.filter((cid) => !next.includes(cid));
+
+    const writes: Promise<unknown>[] = [];
+    if (added.length > 0) {
+      writes.push(
+        supabase
+          .from("collection_guides")
+          .insert(added.map((cid) => ({ collection_id: cid, guide_id: id })))
+      );
+    }
+    if (removed.length > 0) {
+      for (const cid of removed) {
+        writes.push(
+          supabase
+            .from("collection_guides")
+            .delete()
+            .eq("collection_id", cid)
+            .eq("guide_id", id)
+        );
+      }
+    }
+    const results = (await Promise.all(writes)) as { error?: { message: string } }[];
+    const firstError = results.find((r) => r?.error)?.error;
+    if (firstError) {
+      // Revert the optimistic update on the first failure and surface why.
+      toast.error(`Couldn't update collections: ${firstError.message}`);
+      setCollectionIds(prev);
+    }
+  };
+
   const onSubmit = async (values: GuideFormValues) => {
+    // Collection memberships are persisted live via handleCollectionsChange
+    // (toggles in the picker write to the junction immediately), so the
+    // main "Save guide" submit only writes the guide row itself.
     const { error } = await supabase
       .from("guides")
       .update({
@@ -130,10 +192,6 @@ function EditGuide() {
         final_comp_notes: values.final_comp_notes,
         is_public: values.is_public,
         board_steps: steps,
-        // null = "no collection". Reassigning to a different collection
-        // resets collection_position to 0 so the guide lands at the top of
-        // the new folder; the owner can drag-reorder afterwards.
-        collection_id: collectionId,
       })
       .eq("id", id);
 
@@ -258,10 +316,10 @@ function EditGuide() {
               {user && (
                 <CollectionPicker
                   ownerId={user.id}
-                  value={collectionId}
-                  onChange={setCollectionId}
-                  label="Collection"
-                  description="Optional — assign this guide to one of your folders so it appears together with related comps."
+                  value={collectionIds}
+                  onChange={handleCollectionsChange}
+                  label="Collections"
+                  description="Optional — pick one or more folders this guide should live in. Changes save immediately."
                 />
               )}
             </CardContent>

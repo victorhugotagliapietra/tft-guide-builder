@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Check,
   ExternalLink,
   Globe,
   GripVertical,
@@ -58,39 +59,38 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { cn } from "@/lib/utils";
 import type { GuideSummary } from "@/features/guides/types";
 
-// Lives under a directory (_authenticated/collections/) instead of using
-// flat dot-naming. With three files sharing the `collections.` prefix the
-// TanStack plugin auto-promoted the index file to a layout, which silently
-// swallowed nested routes when the layout didn't render an <Outlet />.
-// Directory nesting is unambiguous — this file is just a leaf at
-// /collections/$id/edit, no synthetic layout in the way.
+// Directory-based route — `_authenticated/collections/$id.edit.tsx`.
+// Lives under a directory instead of flat dot-naming so the TanStack router
+// treats it as a clean leaf and doesn't auto-promote a sibling to a layout.
 export const Route = createFileRoute("/_authenticated/collections/$id/edit")({
   component: EditCollection,
 });
 
+type Member = GuideSummary & { position: number };
+
 /**
- * Collection editor — metadata form + drag-and-drop list of the guides
- * assigned to this folder (i.e. `guides.collection_id = this.id`).
+ * Collection editor.
  *
- * Guides land in a collection via the picker on the guide form, not here.
- * This page exists to:
- *   - Rename / re-describe / publish / delete the collection.
- *   - Reorder the guides inside it via drag-and-drop.
- *   - Eject a guide (just nulls its `collection_id`).
- *
- * Saving order is debounced auto-save: each drop schedules a single batch
- * UPDATE 600ms later, so a creator rearranging three guides in quick
- * succession produces one write instead of three. Manual "Save" still
- * exists for the metadata fields.
+ * Three concerns live here:
+ *   1. Metadata form (title / description / publish) — manual save button.
+ *      The button itself switches between "Save details" (primary honey
+ *      when the form is dirty) and "Saved" (mint accent + check icon when
+ *      pristine) so the creator always knows whether their last edit hit
+ *      the database.
+ *   2. Guides list — drag-and-drop reorder, debounced auto-save. Pulled
+ *      from the collection_guides junction joined to the guides table.
+ *   3. Eject — removes the junction row for a single guide without
+ *      touching the guide itself.
  */
 function EditCollection() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [members, setMembers] = useState<GuideSummary[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const form = useForm<CollectionFormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -98,25 +98,22 @@ function EditCollection() {
   });
   const { reset } = form;
 
-  // Initial load: the collection row + the guides assigned to it.
-  // The owner can see all of their own guides regardless of is_public, so
-  // a draft assigned to a public collection is still listed here (and the
-  // editor surfaces a "won't show publicly" badge so the creator knows).
+  // ----- Load collection metadata + ordered membership -----
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const [collectionRes, guidesRes] = await Promise.all([
+      const [collectionRes, junctionRes] = await Promise.all([
         supabase
           .from("collections")
           .select("owner_id, title, description, is_public")
           .eq("id", id)
           .maybeSingle(),
         supabase
-          .from("guides")
-          .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at, collection_position")
+          .from("collection_guides")
+          .select("guide_id, position")
           .eq("collection_id", id)
-          .order("collection_position", { ascending: true }),
+          .order("position", { ascending: true }),
       ]);
       if (cancelled) return;
 
@@ -136,7 +133,33 @@ function EditCollection() {
         description: collectionRes.data.description ?? "",
         is_public: collectionRes.data.is_public,
       });
-      setMembers((guidesRes.data as GuideSummary[]) ?? []);
+
+      const positions = new Map(
+        (junctionRes.data ?? []).map((r) => [r.guide_id, r.position])
+      );
+      const guideIds = (junctionRes.data ?? []).map((r) => r.guide_id);
+
+      if (guideIds.length === 0) {
+        setMembers([]);
+        setLoading(false);
+        return;
+      }
+
+      // Resolve the guide details for each junction row. RLS already
+      // restricts what the viewer can read (owner can see drafts, others
+      // only public). Re-sort by the junction's `position` because IN()
+      // doesn't preserve order.
+      const { data: guideRows } = await supabase
+        .from("guides")
+        .select(
+          "id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at"
+        )
+        .in("id", guideIds);
+      if (cancelled) return;
+      const sorted = ((guideRows as GuideSummary[]) ?? [])
+        .map((g) => ({ ...g, position: positions.get(g.id) ?? 0 }))
+        .sort((a, b) => a.position - b.position);
+      setMembers(sorted);
       setLoading(false);
     })();
     return () => {
@@ -145,6 +168,12 @@ function EditCollection() {
   }, [id, user, navigate, reset]);
 
   // ----- Metadata save (manual button) -----
+  //
+  // After a successful save we call reset(values) to mark the form as
+  // pristine — that's what flips the button label from "Save details"
+  // back to "Saved" (see `formState.isDirty` below). Without the reset,
+  // the form would still show isDirty=true after persistence and the
+  // user would never see the green confirmation state.
   const onSubmit = useCallback(
     async (values: CollectionFormValues) => {
       const { error } = await supabase
@@ -159,38 +188,37 @@ function EditCollection() {
         toast.error(error.message);
         return;
       }
+      reset(values);
       toast.success("Saved");
+    },
+    [id, reset]
+  );
+
+  // ----- Debounced auto-save of guide order -----
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleOrderSave = useCallback(
+    (next: Member[]) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(async () => {
+        const updates = next.map((m, position) =>
+          supabase
+            .from("collection_guides")
+            .update({ position })
+            .eq("collection_id", id)
+            .eq("guide_id", m.id)
+        );
+        const results = await Promise.all(updates);
+        const firstError = results.find((r) => r.error)?.error;
+        if (firstError) {
+          toast.error(`Couldn't save order: ${firstError.message}`);
+        }
+      }, 600);
     },
     [id]
   );
 
-  // ----- Debounced auto-save of order -----
-  //
-  // Every drag-end schedules a single trailing-edge save. We persist the
-  // entire order by updating each guide's `collection_position`. This is N
-  // round-trips (one per row), which is fine at folder-scale (< a few dozen
-  // guides); switching to a single bulk RPC would only matter at scale.
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleOrderSave = useCallback((next: GuideSummary[]) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      // Re-snapshot at fire time so a rapid sequence of drags collapses
-      // into the latest order rather than racing each other.
-      const updates = next.map((g, position) =>
-        supabase.from("guides").update({ collection_position: position }).eq("id", g.id)
-      );
-      const results = await Promise.all(updates);
-      const firstError = results.find((r) => r.error)?.error;
-      if (firstError) {
-        toast.error(`Couldn't save order: ${firstError.message}`);
-      }
-    }, 600);
-  }, []);
-
-  // ----- Drag-and-drop handler -----
+  // ----- Drag-and-drop -----
   const sensors = useSensors(
-    // 6-pixel activation threshold so accidental clicks on the row body
-    // (e.g. the "View" button) don't start a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
 
@@ -207,22 +235,16 @@ function EditCollection() {
     });
   };
 
-  // ----- Eject a guide from the collection (sets its collection_id to null) -----
+  // ----- Eject a guide (removes the junction row only) -----
   const ejectGuide = async (guideId: string) => {
     setMembers((prev) => prev.filter((m) => m.id !== guideId));
     const { error } = await supabase
-      .from("guides")
-      .update({ collection_id: null, collection_position: 0 })
-      .eq("id", guideId);
+      .from("collection_guides")
+      .delete()
+      .eq("collection_id", id)
+      .eq("guide_id", guideId);
     if (error) {
       toast.error(error.message);
-      // Best-effort UI revert: re-fetch on error.
-      const { data } = await supabase
-        .from("guides")
-        .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at, collection_position")
-        .eq("collection_id", id)
-        .order("collection_position", { ascending: true });
-      setMembers((data as GuideSummary[]) ?? []);
     }
   };
 
@@ -243,11 +265,16 @@ function EditCollection() {
   }
 
   const isPublic = form.watch("is_public");
+  // Submit button drives off `isDirty` from react-hook-form. After reset()
+  // on success, isDirty flips back to false and the button shows the
+  // mint-accent "Saved" pill instead of the primary "Save details" CTA.
+  const isDirty = form.formState.isDirty;
+  const isSubmitting = form.formState.isSubmitting;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-semibold">Edit collection</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Edit collection</h1>
         <div className="flex items-center gap-2">
           {isPublic && (
             <>
@@ -274,7 +301,8 @@ function EditCollection() {
                 <AlertDialogTitle>Delete this collection?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This removes the collection and its share link. The guides inside it are not
-                  deleted — they stay on your profile and remain editable, just unassigned.
+                  deleted — they stay on your profile and remain editable, just unassigned from
+                  this folder.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -352,12 +380,30 @@ function EditCollection() {
                   </FormItem>
                 )}
               />
+              {/* Save / Saved button. When the form is dirty we show the
+                  primary CTA. When pristine (post-save or untouched) we
+                  swap to the mint accent with a check icon — gives the
+                  creator immediate confidence the state on screen matches
+                  the database. */}
               <Button
                 type="submit"
-                disabled={form.formState.isSubmitting}
-                className="w-full"
+                disabled={isSubmitting || !isDirty}
+                className={cn(
+                  "w-full transition-colors",
+                  !isDirty &&
+                    !isSubmitting &&
+                    "bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-100"
+                )}
               >
-                {form.formState.isSubmitting ? "Saving…" : "Save details"}
+                {isSubmitting ? (
+                  "Saving…"
+                ) : !isDirty ? (
+                  <>
+                    <Check className="h-4 w-4 mr-2" /> Saved
+                  </>
+                ) : (
+                  "Save details"
+                )}
               </Button>
             </form>
           </Form>
@@ -369,14 +415,14 @@ function EditCollection() {
           <CardTitle>Guides ({members.length})</CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
             Drag to reorder — changes save automatically. To add a guide to this collection,
-            open the guide and pick this collection from its dropdown.
+            open the guide and tick this collection in its picker.
           </p>
         </CardHeader>
         <CardContent>
           {members.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No guides yet. Open any of <Link to="/dashboard" className="underline">your
-              guides</Link> and assign it to this collection from the dropdown in the editor.
+              guides</Link> and tick this collection in its picker to add it here.
             </p>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -401,9 +447,9 @@ function EditCollection() {
 }
 
 /**
- * Single draggable row. The drag handle is the GripVertical button on the
- * left — the rest of the row keeps normal pointer events so creators can
- * still click the title link or the eject button without triggering a drag.
+ * One draggable guide row. Drag handle is the GripVertical button — the
+ * rest of the row keeps normal click behaviour so the title link and the
+ * Remove button still work without triggering a drag.
  */
 function SortableRow({
   guide,
@@ -421,8 +467,6 @@ function SortableRow({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    // While dragging, lift the row visually and dim the rest so the user
-    // can't lose track of what they're moving in a long list.
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : "auto",
   };
@@ -466,7 +510,7 @@ function SortableRow({
         variant="ghost"
         size="sm"
         onClick={onEject}
-        title="Remove from collection (the guide itself isn't deleted)"
+        title="Remove from this collection (the guide itself isn't deleted)"
       >
         Remove
       </Button>

@@ -1,15 +1,15 @@
-import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronDown, Folders, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -18,45 +18,59 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-
-// Reserved sentinel value used in the Radix Select for "no collection".
-// Radix doesn't allow empty-string values, so we route around it by
-// translating this sentinel to `null` at the form boundary.
-const NONE = "__none__";
-const CREATE = "__create__";
+import { cn } from "@/lib/utils";
 
 type CollectionOption = { id: string; title: string };
 
 type Props = {
   ownerId: string;
-  // Current selection as a collection id or null. The picker translates
-  // null ↔ NONE sentinel internally so callers don't have to think about it.
-  value: string | null;
-  onChange: (value: string | null) => void;
-  // Optional label rendered above the trigger. Skipped when used inside a
-  // FormField that already supplies its own label.
+  /**
+   * Multi-select model: an array of collection ids the guide belongs to.
+   * Empty array = guide is in zero collections (the default for a new guide).
+   */
+  value: string[];
+  /**
+   * Called whenever the membership set changes — either via a row toggle
+   * or after the "+ Create collection" inline modal completes. Parents
+   * decide whether to write to the DB immediately (live mode, used by the
+   * guide editor) or to hold the set until the form is submitted (deferred
+   * mode, used by the new-guide form before the guide row exists).
+   */
+  onChange: (next: string[]) => void;
   label?: string;
-  // Optional helper hint under the trigger (e.g. "Optional — guides without
-  // a collection still show on your profile").
   description?: string;
 };
 
 /**
- * Lightweight folder-picker.
+ * Multi-select collection picker.
  *
- * Loads the current user's collections, lets them pick one (or "No collection"),
- * and exposes "+ Create collection" as the last option in the dropdown. Picking
- * Create opens an inline modal that asks for one field (title) and, on save,
- * inserts the new row, auto-selects it, and refreshes the local option list —
- * all without unmounting the surrounding form, so a half-filled guide draft
- * never loses state when the creator decides to make a new collection.
+ * The trigger looks like a dropdown — clicking it opens a Popover with a
+ * scrollable list of the user's collections, each row being a checkable
+ * item. The check sits on the left so the eye can scan down the column
+ * to see "what I'm already in" at a glance.
+ *
+ * "+ Create collection" lives at the bottom of the popover and opens a
+ * one-field Dialog. After save, the new collection is spliced into the
+ * local options list AND auto-selected, so the user lands back in the
+ * same form with their new folder already ticked.
+ *
+ * Selection state is fully controlled — toggling a row only calls
+ * onChange; the parent decides what to persist and when. The picker does
+ * NOT write directly to Supabase (except when creating a new collection,
+ * which is a separate concern from membership).
  */
-export function CollectionPicker({ ownerId, value, onChange, label, description }: Props) {
+export function CollectionPicker({
+  ownerId,
+  value,
+  onChange,
+  label,
+  description,
+}: Props) {
   const [options, setOptions] = useState<CollectionOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+
+  // Inline-create modal
   const [creating, setCreating] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -83,13 +97,29 @@ export function CollectionPicker({ ownerId, value, onChange, label, description 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId]);
 
-  const handleSelect = (next: string) => {
-    if (next === CREATE) {
-      setNewTitle("");
-      setModalOpen(true);
-      return;
+  // Build a quick lookup from id → title once per options change so the
+  // trigger label render doesn't loop through the full list every keystroke.
+  const titleById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of options) m.set(o.id, o.title);
+    return m;
+  }, [options]);
+
+  const triggerLabel = (() => {
+    if (loading) return "Loading…";
+    if (value.length === 0) return "Add to collections";
+    if (value.length === 1) {
+      // Use the option title if we know it; otherwise fall back to "1
+      // collection" so we never render an empty string while titles refresh.
+      return titleById.get(value[0]!) ?? "1 collection";
     }
-    onChange(next === NONE ? null : next);
+    return `${value.length} collections`;
+  })();
+
+  const toggle = (id: string) => {
+    onChange(
+      value.includes(id) ? value.filter((v) => v !== id) : [...value, id]
+    );
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -115,37 +145,93 @@ export function CollectionPicker({ ownerId, value, onChange, label, description 
         a.title.localeCompare(b.title)
       )
     );
-    onChange(data.id);
+    onChange([...value, data.id]);
     setModalOpen(false);
+    setNewTitle("");
     toast.success(`Created "${data.title}"`);
   };
 
   return (
     <div className="space-y-1.5">
       {label && <Label>{label}</Label>}
-      <Select value={value ?? NONE} onValueChange={handleSelect} disabled={loading}>
-        <SelectTrigger>
-          <SelectValue placeholder={loading ? "Loading…" : "No collection"} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>
-            <span className="text-muted-foreground">No collection</span>
-          </SelectItem>
-          {options.length > 0 && <SelectSeparator />}
-          {options.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.title}
-            </SelectItem>
-          ))}
-          <SelectSeparator />
-          <SelectItem value={CREATE}>
-            <span className="flex items-center gap-2 text-primary">
-              <Plus className="h-3.5 w-3.5" />
-              Create collection
+
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between font-normal"
+            disabled={loading}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Folders className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{triggerLabel}</span>
             </span>
-          </SelectItem>
-        </SelectContent>
-      </Select>
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          {/* The list is intentionally lightweight — no Command primitive,
+              no search — because creators usually have < 20 collections and
+              a simple list reads faster than a search field at that scale.
+              The whole popover sits inside its own scroll container so
+              long lists never push the page chrome. */}
+          <ul className="max-h-72 overflow-y-auto py-1">
+            {options.length === 0 && (
+              <li className="px-3 py-3 text-sm text-muted-foreground">
+                No collections yet. Create one below to get started.
+              </li>
+            )}
+            {options.map((o) => {
+              const checked = value.includes(o.id);
+              return (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggle(o.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 text-left text-sm",
+                      "hover:bg-accent/15 focus:bg-accent/15 focus:outline-none transition-colors"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-4 w-4 rounded-sm border flex items-center justify-center shrink-0",
+                        checked
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-input"
+                      )}
+                      aria-hidden="true"
+                    >
+                      {checked && <Check className="h-3 w-3" />}
+                    </span>
+                    <span className="truncate">{o.title}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="border-t border-border">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setNewTitle("");
+                setModalOpen(true);
+              }}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 text-sm text-primary",
+                "hover:bg-primary/10 focus:bg-primary/10 focus:outline-none transition-colors"
+              )}
+            >
+              <Plus className="h-4 w-4" />
+              Create collection
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+
       {description && <p className="text-xs text-muted-foreground">{description}</p>}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

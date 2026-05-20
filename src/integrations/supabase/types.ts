@@ -18,8 +18,6 @@ export type Database = {
         Row: {
           author_id: string
           board_steps: Json
-          collection_id: string | null
-          collection_position: number
           created_at: string
           description: string
           difficulty: Database["public"]["Enums"]["guide_difficulty"]
@@ -36,8 +34,6 @@ export type Database = {
         Insert: {
           author_id: string
           board_steps?: Json
-          collection_id?: string | null
-          collection_position?: number
           created_at?: string
           description?: string
           difficulty?: Database["public"]["Enums"]["guide_difficulty"]
@@ -54,8 +50,6 @@ export type Database = {
         Update: {
           author_id?: string
           board_steps?: Json
-          collection_id?: string | null
-          collection_position?: number
           created_at?: string
           description?: string
           difficulty?: Database["public"]["Enums"]["guide_difficulty"]
@@ -68,6 +62,27 @@ export type Database = {
           tft_set?: string
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      collection_guides: {
+        Row: {
+          collection_id: string
+          guide_id: string
+          position: number
+          added_at: string
+        }
+        Insert: {
+          collection_id: string
+          guide_id: string
+          position?: number
+          added_at?: string
+        }
+        Update: {
+          collection_id?: string
+          guide_id?: string
+          position?: number
+          added_at?: string
         }
         Relationships: []
       }

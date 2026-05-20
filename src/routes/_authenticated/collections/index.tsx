@@ -63,9 +63,13 @@ function CollectionsList() {
 
   const loadCollections = async () => {
     if (!user) return;
+    // Counts come from the junction (collection_guides) — one row per
+    // (collection, guide) pair. We want the owner-facing count (drafts
+    // included), which is just the raw junction count since RLS doesn't
+    // filter our own rows.
     const { data, error } = await supabase
       .from("collections")
-      .select("id, title, description, is_public, guides(count)")
+      .select("id, title, description, is_public, collection_guides(count)")
       .eq("owner_id", user.id)
       .order("updated_at", { ascending: false });
     if (error) {
@@ -77,14 +81,14 @@ function CollectionsList() {
       title: string;
       description: string;
       is_public: boolean;
-      guides?: { count: number }[];
+      collection_guides?: { count: number }[];
     };
     const items: CollectionListItem[] = ((data as Row[]) ?? []).map((r) => ({
       id: r.id,
       title: r.title,
       description: r.description,
       is_public: r.is_public,
-      guide_count: r.guides?.[0]?.count ?? 0,
+      guide_count: r.collection_guides?.[0]?.count ?? 0,
     }));
     setState({ status: "ok", items });
   };
