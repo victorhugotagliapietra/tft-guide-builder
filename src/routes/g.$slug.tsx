@@ -419,7 +419,7 @@ function PublicGuide() {
               Copy link
             </Button>
           </div>
-          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight [overflow-wrap:anywhere]">
             {guide.title}
           </h1>
           {guide.description && (

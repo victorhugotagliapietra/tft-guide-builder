@@ -176,14 +176,16 @@ function CollectionsList() {
                           <Lock className="h-3 w-3 mr-1" /> Draft
                         </Badge>
                       )}
-                      {c.is_public && (
-                        <CopyLinkButton
-                          href={`/collection/${c.id}`}
-                          iconOnly
-                          variant="ghost"
-                          stopPropagation
-                        />
-                      )}
+                      {/* Copy link on every card. Draft collections redirect
+                          anon viewers to the creator profile, but the owner
+                          can still preview through this URL, and they often
+                          want it in the clipboard before publishing. */}
+                      <CopyLinkButton
+                        href={`/collection/${c.id}`}
+                        iconOnly
+                        variant="ghost"
+                        stopPropagation
+                      />
                     </div>
                   </div>
                   <Badge variant="outline" className="self-start mt-1">

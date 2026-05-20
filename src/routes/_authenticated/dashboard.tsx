@@ -8,6 +8,8 @@ import type { GuideSummary } from "@/features/guides/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CopyLinkButton } from "@/components/copy-link-button";
+import { htmlExcerpt } from "@/lib/html-text";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -19,7 +21,7 @@ type LoadState =
   | { status: "ok"; guides: GuideSummary[] };
 
 function Dashboard() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
@@ -47,7 +49,15 @@ function Dashboard() {
             Drafts and published comps you've created.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {profile?.username && (
+            <CopyLinkButton
+              href={`/profile/${profile.username}`}
+              variant="outline"
+              label="Copy profile link"
+              stopPropagation={false}
+            />
+          )}
           <Button asChild variant="outline">
             <Link to="/collections">
               <Folders className="h-4 w-4 mr-1" /> Collections
@@ -105,8 +115,11 @@ function Dashboard() {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {/* Strip the TipTap HTML before display — without
+                      htmlExcerpt() the user sees literal "<p>foo</p>"
+                      markup in the card. */}
                   <p className="text-sm text-muted-foreground line-clamp-2">
-                    {g.description || "No description yet."}
+                    {htmlExcerpt(g.description, 160) || "No description yet."}
                   </p>
                   <p className="text-xs text-muted-foreground mt-3">
                     Updated {format(new Date(g.updated_at), "MMM d, yyyy")}
