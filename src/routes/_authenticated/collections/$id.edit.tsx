@@ -60,6 +60,12 @@ import {
 } from "@/components/ui/form";
 import type { GuideSummary } from "@/features/guides/types";
 
+// Lives under a directory (_authenticated/collections/) instead of using
+// flat dot-naming. With three files sharing the `collections.` prefix the
+// TanStack plugin auto-promoted the index file to a layout, which silently
+// swallowed nested routes when the layout didn't render an <Outlet />.
+// Directory nesting is unambiguous — this file is just a leaf at
+// /collections/$id/edit, no synthetic layout in the way.
 export const Route = createFileRoute("/_authenticated/collections/$id/edit")({
   component: EditCollection,
 });
