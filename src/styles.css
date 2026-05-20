@@ -178,6 +178,12 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    /* Prevent rogue inner content (long unbroken strings, oversized embeds,
+       etc.) from producing a page-level horizontal scrollbar. Inner
+       containers that legitimately need to scroll horizontally (e.g. the
+       board hex grid on narrow screens) can opt back in with their own
+       overflow rule. */
+    overflow-x: hidden;
     /* Subtle directional vignette: a warm honey glow at top-left fading
        into the ink plate. Sells the "workbench lit by a single bulb"
        metaphor without a heavy background image. */

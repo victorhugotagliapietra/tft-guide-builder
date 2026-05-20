@@ -276,19 +276,21 @@ function EditCollection() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="font-display text-2xl font-semibold tracking-tight">Edit collection</h1>
         <div className="flex items-center gap-2">
+          {/* Copy link is always visible — drafts are only viewable by the
+              owner via that URL today, but the moment they flip the publish
+              switch the same link works for everyone, so it's useful to
+              have ready in the clipboard already. */}
+          <CopyLinkButton
+            href={`/collection/${id}`}
+            variant="outline"
+            stopPropagation={false}
+          />
           {isPublic && (
-            <>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/collection/$id" params={{ id }}>
-                  <ExternalLink className="h-4 w-4 mr-1" /> View public page
-                </Link>
-              </Button>
-              <CopyLinkButton
-                href={`/collection/${id}`}
-                variant="outline"
-                stopPropagation={false}
-              />
-            </>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/collection/$id" params={{ id }}>
+                <ExternalLink className="h-4 w-4 mr-1" /> View public page
+              </Link>
+            </Button>
           )}
           <AlertDialog>
             <AlertDialogTrigger asChild>

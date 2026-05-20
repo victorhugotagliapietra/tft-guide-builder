@@ -184,9 +184,11 @@ function Body({ view, isOwner }: { view: ViewModel; isOwner: boolean }) {
         <div className="mx-auto max-w-5xl px-4 py-10 space-y-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
-              <h1 className="text-3xl font-semibold leading-tight">{view.title}</h1>
+              <h1 className="text-3xl font-semibold leading-tight [overflow-wrap:anywhere]">
+                {view.title}
+              </h1>
               {view.description && (
-                <p className="text-muted-foreground mt-3 whitespace-pre-wrap max-w-3xl">
+                <p className="text-muted-foreground mt-3 whitespace-pre-wrap max-w-3xl [overflow-wrap:anywhere]">
                   {view.description}
                 </p>
               )}

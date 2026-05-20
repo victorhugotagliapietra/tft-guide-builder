@@ -160,6 +160,13 @@ export function RichTextContent({
     <div
       className={cn(
         "text-sm leading-relaxed",
+        // overflow-wrap:anywhere lets long unbroken strings (URLs, run-on
+        // text, accidental "asdfasdfasdfasdfasdf...") wrap to the next
+        // line instead of forcing a horizontal scrollbar on the page.
+        // min-w-0 is the companion fix for the parent flex container — a
+        // child default of min-width:auto would otherwise refuse to shrink
+        // and re-create the same overflow.
+        "min-w-0 [overflow-wrap:anywhere]",
         "[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
         "[&_strong]:font-semibold",
         "[&_em]:italic",
