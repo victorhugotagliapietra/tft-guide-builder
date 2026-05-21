@@ -78,7 +78,10 @@ const ChampionImg = memo(function ChampionImg({
         src={TRAINING_DUMMY_LOCAL_ICON}
         alt={champion.name}
         className={cn("object-cover", className)}
+        width={CELL_W}
+        height={CELL_H}
         loading="eager"
+        decoding="async"
         draggable={false}
       />
     );
@@ -104,12 +107,19 @@ const ChampionImg = memo(function ChampionImg({
     );
   }
 
+  // Board hex champion: kept at high priority because it's the focal point.
+  // async decode keeps the main thread responsive while the bitmap is decoded.
   return (
     <img
       src={src}
       alt={champion.name}
       className={cn("object-cover", className)}
+      width={CELL_W}
+      height={CELL_H}
       loading="eager"
+      decoding="async"
+      // @ts-expect-error fetchPriority valid HTML attr
+      fetchpriority="high"
       draggable={false}
       onError={() => {
         if (!primaryFailed && src === champion.iconUrl) {
@@ -191,7 +201,10 @@ function ItemIconImg({ iconUrl, name }: { iconUrl: string; name: string }) {
       src={iconUrl}
       alt={name}
       className="w-full h-full object-cover rounded-sm"
+      width={28}
+      height={28}
       loading="lazy"
+      decoding="async"
       onError={() => setFailed(true)}
     />
   );

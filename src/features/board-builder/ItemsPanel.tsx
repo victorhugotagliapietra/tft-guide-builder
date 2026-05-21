@@ -51,7 +51,14 @@ function ItemImg({ item, className }: { item: TFTItem; className?: string }) {
       src={item.iconUrl}
       alt={item.name}
       className={cn("object-cover", className)}
+      width={40}
+      height={40}
+      // Items panel: same low-priority async decode as the champion pool.
+      // The grid is denser (50+ items at once) so this matters even more.
       loading="lazy"
+      decoding="async"
+      // @ts-expect-error fetchPriority valid HTML attr
+      fetchpriority="low"
       draggable={false}
       onError={() => setFailed(true)}
     />
@@ -246,7 +253,13 @@ function ItemsPanelImpl() {
           "[&::-webkit-scrollbar-thumb]:bg-white/10",
           "hover:[&::-webkit-scrollbar-thumb]:bg-white/25",
         )}
-        style={{ maxHeight: "340px" }}
+        style={{
+          maxHeight: "340px",
+          // Skip rendering off-screen item rows entirely (paint, decode, layout).
+          // The grid scrolls vertically; below-the-fold tiles wait until needed.
+          contentVisibility: "auto",
+          containIntrinsicSize: "auto 280px",
+        }}
       >
         {visible.map((item) => (
           <DraggableItemTile key={item.apiName} item={item} />

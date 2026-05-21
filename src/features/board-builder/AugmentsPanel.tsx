@@ -266,7 +266,12 @@ export function AugmentIcon({ augment, className }: { augment: TFTAugment; class
         src={cached.url}
         alt={augment.name}
         className={cn("object-contain", className)}
+        width={40}
+        height={40}
         loading="lazy"
+        decoding="async"
+        // @ts-expect-error fetchPriority valid HTML attr
+        fetchpriority="low"
         draggable={false}
         // No onError on the cached-success path: if a URL worked once in this
         // session, we assume it keeps working. Avoids accidental invalidation
@@ -290,7 +295,12 @@ export function AugmentIcon({ augment, className }: { augment: TFTAugment; class
       src={candidates[attemptIdx]}
       alt={augment.name}
       className={cn("object-contain", className)}
+      width={40}
+      height={40}
       loading="lazy"
+      decoding="async"
+      // @ts-expect-error fetchPriority valid HTML attr
+      fetchpriority="low"
       draggable={false}
       onLoad={() => {
         // First time this URL loads — pin it in the cache so we skip the
@@ -431,6 +441,12 @@ function AugmentsPanelImpl() {
           maxHeight: 420,
           scrollbarGutter: "stable",
           gridTemplateColumns: "repeat(auto-fill, minmax(40px, 1fr))",
+          // Augments are the densest grid (200+ tiles). content-visibility:auto
+          // lets the browser skip layout/paint/decode for rows that scrolled
+          // off-screen — huge win since the user rarely scans the full catalog
+          // at once.
+          contentVisibility: "auto",
+          containIntrinsicSize: "auto 360px",
         }}
       >
         {visible.length === 0 ? (

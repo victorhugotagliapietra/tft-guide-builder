@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TFT_DATA_URL } from "./cdn";
 import { normalizeSetData, type RawTFTData } from "./normalize";
@@ -232,6 +232,77 @@ export function TFTDataProvider({ children }: { children: ReactNode }) {
     for (const a of augments) out[a.tier].push(a);
     return out;
   }, [augments]);
+
+  // Pre-warm the browser image cache once the dataset arrives.
+  //
+  // When the user expands a board step, the champion pool + items panel mount
+  // dozens of <img> at once. Even with lazy/async decoding, the cold-network
+  // first-time fetch is the dominant cost. By queuing low-priority Image()
+  // requests as soon as the catalog data is available, the browser fetches
+  // them via its idle network slots — by the time the editor needs them they
+  // are already in the HTTP cache and the panel paints from disk.
+  //
+  // Guards:
+  //   - Only fires once per data load (warmedRef).
+  //   - Only in the browser (no SSR).
+  //   - Skipped if the user has data-saver enabled or is on a slow connection.
+  const warmedRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (warmedRef.current) return;
+    if (!query.data) return;
+
+    // Respect user preferences — saveData mode means "this user doesn't want
+    // background fetches", and 2G/slow-2G means the warm would do more harm
+    // than good (would compete with real interactions for bandwidth).
+    const conn = (
+      navigator as Navigator & {
+        connection?: { saveData?: boolean; effectiveType?: string };
+      }
+    ).connection;
+    if (conn?.saveData) return;
+    if (conn?.effectiveType === "slow-2g" || conn?.effectiveType === "2g") return;
+
+    warmedRef.current = true;
+
+    const urls = new Set<string>();
+    for (const c of champions) {
+      if (c.iconUrl) urls.add(c.iconUrl);
+    }
+    for (const i of items) {
+      if (i.iconUrl) urls.add(i.iconUrl);
+    }
+    for (const t of traits) {
+      if (t.iconUrl) urls.add(t.iconUrl);
+    }
+
+    // Defer the warm to the next idle slot so it never competes with the
+    // current navigation's paint. requestIdleCallback isn't universally
+    // available; fall back to setTimeout in Safari/etc.
+    const schedule =
+      "requestIdleCallback" in window
+        ? (cb: () => void) =>
+            (
+              window as Window & {
+                requestIdleCallback: (
+                  cb: () => void,
+                  opts?: { timeout: number },
+                ) => number;
+              }
+            ).requestIdleCallback(cb, { timeout: 2000 })
+        : (cb: () => void) => window.setTimeout(cb, 200);
+
+    schedule(() => {
+      for (const url of urls) {
+        const img = new Image();
+        img.decoding = "async";
+        // fetchPriority is widely supported in Chromium + Safari 17+; missing
+        // type in older lib.dom.d.ts, so we set via property access cast.
+        (img as HTMLImageElement & { fetchPriority?: string }).fetchPriority = "low";
+        img.src = url;
+      }
+    });
+  }, [query.data, champions, items, traits]);
 
   const value = useMemo<TFTDataContextValue>(
     () => ({

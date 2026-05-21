@@ -153,7 +153,12 @@ const ChampionImg = memo(function ChampionImg({
         src={TRAINING_DUMMY_LOCAL_ICON}
         alt={champion.name}
         className={cn("object-cover", className)}
-        loading="eager"
+        width={44}
+        height={44}
+        loading="lazy"
+        decoding="async"
+        // @ts-expect-error fetchPriority is a valid img attr (HTML Living Standard) but not yet in React types in some setups
+        fetchpriority="low"
         draggable={false}
       />
     );
@@ -184,7 +189,17 @@ const ChampionImg = memo(function ChampionImg({
       src={src}
       alt={champion.name}
       className={cn("object-cover", className)}
-      loading="eager"
+      width={44}
+      height={44}
+      // Tiles in the champion pool: lazy + async decode + low priority. The
+      // browser-native lazy loading skips off-screen images entirely; async
+      // decode keeps the main thread free during the initial mount surge
+      // (60+ champions on first expand of a step); low fetch priority lets
+      // the board hexes + UI grab bandwidth first.
+      loading="lazy"
+      decoding="async"
+      // @ts-expect-error fetchPriority valid HTML attr, not in older React types
+      fetchpriority="low"
       draggable={false}
       onError={() => {
         if (!primaryFailed && src === champion.iconUrl) {
@@ -387,7 +402,20 @@ const ChampionPanelContent = memo(function ChampionPanelContent({
         </div>
       </div>
 
-      <div className="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-x-1.5 gap-y-2 justify-items-center">
+      {/*
+        content-visibility:auto lets the browser skip layout + paint + image
+        decode entirely for rows that are off-screen. With 60+ champion tiles
+        this dramatically cuts the work the browser does on first expand of a
+        step. contain-intrinsic-size reserves an estimated height per tile
+        (~64px including label) so scrolling doesn't lurch as content paints in.
+      */}
+      <div
+        className="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-x-1.5 gap-y-2 justify-items-center"
+        style={{
+          contentVisibility: "auto",
+          containIntrinsicSize: "auto 320px",
+        }}
+      >
         {filtered.map((champion) => (
           <DraggableChampionTile
             key={champion.apiName}

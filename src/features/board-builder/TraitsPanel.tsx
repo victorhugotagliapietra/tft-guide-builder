@@ -95,7 +95,12 @@ function TraitIcon({ url, alt, className }: { url: string; alt: string; classNam
       src={url}
       alt={alt}
       className={cn("object-contain", className)}
+      width={16}
+      height={16}
       loading="lazy"
+      decoding="async"
+      // @ts-expect-error fetchPriority valid HTML attr
+      fetchpriority="low"
       draggable={false}
       onError={() => setFailed(true)}
     />

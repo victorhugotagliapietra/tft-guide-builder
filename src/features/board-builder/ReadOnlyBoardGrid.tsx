@@ -55,7 +55,10 @@ const ChampionImg = memo(function ChampionImg({
         src={TRAINING_DUMMY_LOCAL_ICON}
         alt={champion.name}
         className={cn("object-cover", className)}
+        width={CELL_W}
+        height={CELL_H}
         loading="lazy"
+        decoding="async"
         draggable={false}
       />
     );
@@ -86,7 +89,10 @@ const ChampionImg = memo(function ChampionImg({
       src={src}
       alt={champion.name}
       className={cn("object-cover", className)}
+      width={CELL_W}
+      height={CELL_H}
       loading="lazy"
+      decoding="async"
       onError={() => {
         if (!primaryFailed && src === champion.iconUrl) {
           setPrimaryFailed(true);
@@ -112,7 +118,10 @@ function ItemIcons({ itemKeys, itemMap }: { itemKeys: string[]; itemMap: Map<str
             alt={item.name}
             className="w-7 h-7 rounded-sm object-cover ring-1 ring-black/60 shadow-[0_1px_3px_rgba(0,0,0,0.6)]"
             title={item.name}
+            width={28}
+            height={28}
             loading="lazy"
+            decoding="async"
           />
         ) : (
           <div key={i} className="w-7 h-7 rounded-sm bg-black/40" />
