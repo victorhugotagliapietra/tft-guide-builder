@@ -62,16 +62,18 @@ const ChampionImg = memo(function ChampionImg({
   }
 
   const src =
-    !primaryFailed && champion.iconUrl ? champion.iconUrl
-    : !fallbackFailed && champion.fallbackIconUrl ? champion.fallbackIconUrl
-    : null;
+    !primaryFailed && champion.iconUrl
+      ? champion.iconUrl
+      : !fallbackFailed && champion.fallbackIconUrl
+        ? champion.fallbackIconUrl
+        : null;
 
   if (!src) {
     return (
       <div
         className={cn(
           "flex items-center justify-center bg-muted/40 text-[9px] text-muted-foreground text-center leading-tight px-0.5",
-          className
+          className,
         )}
       >
         {champion.name.slice(0, 7)}
@@ -134,10 +136,7 @@ function ReadOnlyBoardGridImpl({ units }: Props) {
 
   return (
     <div className="overflow-x-auto pb-2">
-      <div
-        className="relative"
-        style={{ width: CONTAINER_W, height: CONTAINER_H }}
-      >
+      <div className="relative" style={{ width: CONTAINER_W, height: CONTAINER_H }}>
         {Array.from({ length: BOARD_ROWS }, (_, row) =>
           Array.from({ length: BOARD_COLS }, (_, col) => {
             const pos = coordsToPosition(row, col);
@@ -160,7 +159,7 @@ function ReadOnlyBoardGridImpl({ units }: Props) {
                     <div
                       className={cn(
                         "absolute inset-0",
-                        COST_HEX_BORDER[champion.cost] ?? COST_HEX_BORDER[1]
+                        COST_HEX_BORDER[champion.cost] ?? COST_HEX_BORDER[1],
                       )}
                       style={{ clipPath: CLIP }}
                     />
@@ -179,9 +178,12 @@ function ReadOnlyBoardGridImpl({ units }: Props) {
                             strokeWidth={2}
                             fill="currentColor"
                             stroke="rgba(0,0,0,0.9)"
-                            style={{ paintOrder: "stroke fill", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
+                            style={{
+                              paintOrder: "stroke fill",
+                              filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))",
+                            }}
                             className={cn(
-                              unit.starLevel === 3 ? "text-yellow-400" : "text-slate-200"
+                              unit.starLevel === 3 ? "text-yellow-400" : "text-slate-200",
                             )}
                           />
                         ))}
@@ -199,15 +201,12 @@ function ReadOnlyBoardGridImpl({ units }: Props) {
                       className={cn("absolute inset-0", EMPTY_HEX_BORDER)}
                       style={{ clipPath: CLIP }}
                     />
-                    <div
-                      className="absolute bg-muted/15"
-                      style={{ inset: 1.5, clipPath: CLIP }}
-                    />
+                    <div className="absolute bg-muted/15" style={{ inset: 1.5, clipPath: CLIP }} />
                   </>
                 )}
               </div>
             );
-          })
+          }),
         )}
       </div>
     </div>

@@ -17,12 +17,8 @@ function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <p className="font-display text-xs uppercase tracking-[0.3em] text-primary/70">
-          Empty hex
-        </p>
-        <h1 className="font-display text-7xl font-bold text-foreground mt-3 tracking-tight">
-          404
-        </h1>
+        <p className="font-display text-xs uppercase tracking-[0.3em] text-primary/70">Empty hex</p>
+        <h1 className="font-display text-7xl font-bold text-foreground mt-3 tracking-tight">404</h1>
         <p className="mt-4 text-sm text-muted-foreground">
           Whatever lived here got rolled away. Nothing on this slot.
         </p>
@@ -95,9 +91,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "TFT Guides — Build & Share Teamfight Tactics Comps" },
-      { name: "description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
-      { property: "og:description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
-      { name: "twitter:description", content: "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps." },
+      {
+        name: "description",
+        content:
+          "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps.",
+      },
+      {
+        property: "og:description",
+        content:
+          "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Create and share detailed Teamfight Tactics (TFT) guides with progressive board steps.",
+      },
     ],
     links: [
       {

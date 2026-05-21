@@ -44,10 +44,7 @@ type GuideData = {
   steps: BoardStep[];
 };
 
-type PageState =
-  | { status: "loading" }
-  | { status: "missing" }
-  | { status: "ok"; guide: GuideData };
+type PageState = { status: "loading" } | { status: "missing" } | { status: "ok"; guide: GuideData };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -118,22 +115,17 @@ function ReadOnlyStepCard({
 
   function handleCopyPlannerCode(e: React.MouseEvent) {
     e.stopPropagation(); // keep the toggle from firing when clicking inside the header
-    const result = generatePlannerCode(
-      step.units,
-      setNumber,
-      plannerCodeMap,
-      (apiName) => {
-        const c = championMap.get(apiName);
-        return c ? { cost: c.cost } : undefined;
-      }
-    );
+    const result = generatePlannerCode(step.units, setNumber, plannerCodeMap, (apiName) => {
+      const c = championMap.get(apiName);
+      return c ? { cost: c.cost } : undefined;
+    });
     if (!result.ok) {
       toast.error(result.error);
       return;
     }
     navigator.clipboard.writeText(result.code).then(
       () => toast.success("Board code copied!"),
-      () => toast.error("Failed to write to clipboard.")
+      () => toast.error("Failed to write to clipboard."),
     );
   }
 
@@ -149,7 +141,7 @@ function ReadOnlyStepCard({
       <div
         className={cn(
           "flex items-center gap-2 px-4 py-3 select-none transition-colors hover:bg-muted/30",
-          expanded && "border-b border-border"
+          expanded && "border-b border-border",
         )}
       >
         <button
@@ -159,11 +151,7 @@ function ReadOnlyStepCard({
           className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
         >
           <span className="shrink-0 text-muted-foreground">
-            {expanded ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </span>
           <span className="font-medium text-base flex-1 truncate text-foreground">
             {step.title}
@@ -213,14 +201,9 @@ function ReadOnlyStepCard({
       {expanded && (
         <div className="p-4">
           {unitCount === 0 ? (
-            <p className="text-sm text-foreground/70 italic">
-              No units on this board.
-            </p>
+            <p className="text-sm text-foreground/70 italic">No units on this board.</p>
           ) : (
-            <div
-              className="mx-auto space-y-4"
-              style={{ maxWidth: STEP_CONTENT_MAX_WIDTH }}
-            >
+            <div className="mx-auto space-y-4" style={{ maxWidth: STEP_CONTENT_MAX_WIDTH }}>
               {/* Trio: Traits | Board | Augments. flex-wrap + justify-center
                   so the row stays centered when it fits and degrades to a
                   vertical stack on narrow viewports. */}
@@ -238,10 +221,7 @@ function ReadOnlyStepCard({
                   section as a continuation rather than a sidebar. */}
               {step.description && (
                 <div className="rounded-lg border border-border/40 bg-muted/15 px-6 py-5">
-                  <RichTextContent
-                    html={step.description}
-                    className={NOTES_TEXT_CLASS}
-                  />
+                  <RichTextContent html={step.description} className={NOTES_TEXT_CLASS} />
                 </div>
               )}
             </div>
@@ -278,7 +258,7 @@ function PublicGuide() {
       const { data } = await supabase
         .from("guides")
         .select(
-          "title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, board_steps, is_public, author_id"
+          "title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, board_steps, is_public, author_id",
         )
         .eq("slug", slug)
         .maybeSingle();
@@ -390,18 +370,12 @@ function PublicGuide() {
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-wrap gap-2">
-              {guide.tft_set && (
-                <Badge variant="secondary">Set {guide.tft_set}</Badge>
-              )}
-              {guide.patch && (
-                <Badge variant="outline">Patch {guide.patch}</Badge>
-              )}
+              {guide.tft_set && <Badge variant="secondary">Set {guide.tft_set}</Badge>}
+              {guide.patch && <Badge variant="outline">Patch {guide.patch}</Badge>}
               <Badge variant="outline">
                 {DIFFICULTY_LABELS[guide.difficulty] ?? guide.difficulty}
               </Badge>
-              {guide.playstyle && (
-                <Badge variant="outline">{guide.playstyle}</Badge>
-              )}
+              {guide.playstyle && <Badge variant="outline">{guide.playstyle}</Badge>}
             </div>
             <Button
               type="button"
@@ -434,10 +408,7 @@ function PublicGuide() {
               Final comp notes
             </h2>
             <div className="rounded-lg border border-border bg-muted/15 px-4 py-3">
-              <RichTextContent
-                html={guide.final_comp_notes}
-                className={NOTES_TEXT_CLASS}
-              />
+              <RichTextContent html={guide.final_comp_notes} className={NOTES_TEXT_CLASS} />
             </div>
           </section>
         )}
@@ -475,7 +446,13 @@ function PublicGuide() {
       </main>
 
       <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
-        Crafted on <Link to="/" className="font-display tracking-tight text-foreground/80 hover:text-foreground">Hexcraft</Link>
+        Crafted on{" "}
+        <Link
+          to="/"
+          className="font-display tracking-tight text-foreground/80 hover:text-foreground"
+        >
+          Hexcraft
+        </Link>
       </footer>
     </div>
   );

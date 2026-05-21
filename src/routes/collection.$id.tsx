@@ -112,7 +112,7 @@ function CollectionPage() {
       if (cancelled) return;
 
       const positionByGuide = new Map(
-        (junctionRes.data ?? []).map((r) => [r.guide_id, r.position])
+        (junctionRes.data ?? []).map((r) => [r.guide_id, r.position]),
       );
       const guideIds = Array.from(positionByGuide.keys());
 
@@ -120,15 +120,12 @@ function CollectionPage() {
       if (guideIds.length > 0) {
         const q = supabase
           .from("guides")
-          .select(
-            "id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at"
-          )
+          .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at")
           .in("id", guideIds);
         const { data: guideRows } = isOwner ? await q : await q.eq("is_public", true);
         if (cancelled) return;
         guides = ((guideRows as GuideSummary[]) ?? []).sort(
-          (a, b) =>
-            (positionByGuide.get(a.id) ?? 0) - (positionByGuide.get(b.id) ?? 0)
+          (a, b) => (positionByGuide.get(a.id) ?? 0) - (positionByGuide.get(b.id) ?? 0),
         );
       }
 
@@ -194,9 +191,7 @@ function Body({ view, isOwner }: { view: ViewModel; isOwner: boolean }) {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {!view.is_public && (
-                <Badge variant="secondary">Draft (only you can see this)</Badge>
-              )}
+              {!view.is_public && <Badge variant="secondary">Draft (only you can see this)</Badge>}
               {view.is_public && (
                 <CopyLinkButton
                   href={`/collection/${view.id}`}

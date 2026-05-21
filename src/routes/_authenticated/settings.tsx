@@ -6,10 +6,7 @@ import { toast } from "sonner";
 import { ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import {
-  profileFormSchema,
-  type ProfileFormValues,
-} from "@/features/collections/types";
+import { profileFormSchema, type ProfileFormValues } from "@/features/collections/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,10 +57,9 @@ function SettingsPage() {
     // otherwise the user gets a false "taken" error caused by their own row.
     if (values.username !== profile.username) {
       setChecking(true);
-      const { data: available, error: availErr } = await supabase.rpc(
-        "is_username_available",
-        { p_username: values.username }
-      );
+      const { data: available, error: availErr } = await supabase.rpc("is_username_available", {
+        p_username: values.username,
+      });
       setChecking(false);
       if (availErr) {
         toast.error(availErr.message);
@@ -96,9 +92,7 @@ function SettingsPage() {
   };
 
   if (loading || !profile) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-12 text-muted-foreground">Loading…</div>
-    );
+    return <div className="mx-auto max-w-2xl px-4 py-12 text-muted-foreground">Loading…</div>;
   }
 
   const currentUsername = profile.username;
@@ -107,9 +101,7 @@ function SettingsPage() {
     <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          How you're shown across the platform.
-        </p>
+        <p className="text-muted-foreground text-sm mt-1">How you're shown across the platform.</p>
       </div>
 
       <Card>
@@ -128,9 +120,7 @@ function SettingsPage() {
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
-                    <FormDescription>
-                      Shown on your profile and guides.
-                    </FormDescription>
+                    <FormDescription>Shown on your profile and guides.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -149,11 +139,13 @@ function SettingsPage() {
                     </FormControl>
                     <FormDescription className="space-y-1">
                       <span>
-                        Profile URL: <span className="font-mono">/profile/{field.value || "…"}</span>
+                        Profile URL:{" "}
+                        <span className="font-mono">/profile/{field.value || "…"}</span>
                       </span>
                       {currentUsername && currentUsername !== field.value && (
                         <span className="block text-amber-500">
-                          Changing your username breaks any old /profile/{currentUsername} links you've shared.
+                          Changing your username breaks any old /profile/{currentUsername} links
+                          you've shared.
                         </span>
                       )}
                     </FormDescription>
@@ -162,10 +154,7 @@ function SettingsPage() {
                 )}
               />
               <div className="flex items-center gap-2">
-                <Button
-                  type="submit"
-                  disabled={form.formState.isSubmitting || checking}
-                >
+                <Button type="submit" disabled={form.formState.isSubmitting || checking}>
                   {form.formState.isSubmitting || checking ? "Saving…" : "Save"}
                 </Button>
                 {currentUsername && (

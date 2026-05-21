@@ -98,12 +98,17 @@ function ProfilePage() {
 
       const guides = (guidesRes.data as GuideSummary[]) ?? [];
       const collections: CollectionPreview[] = (collectionsRes.data ?? []).map(
-        (c: { id: string; title: string; description: string; collection_guides?: { count: number }[] }) => ({
+        (c: {
+          id: string;
+          title: string;
+          description: string;
+          collection_guides?: { count: number }[];
+        }) => ({
           id: c.id,
           title: c.title,
           description: c.description,
           guide_count: c.collection_guides?.[0]?.count ?? 0,
-        })
+        }),
       );
 
       setState({
@@ -157,7 +162,12 @@ function ProfilePage() {
             >
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {state.collections.map((c) => (
-                  <Link key={c.id} to="/collection/$id" params={{ id: c.id }} className="block h-full">
+                  <Link
+                    key={c.id}
+                    to="/collection/$id"
+                    params={{ id: c.id }}
+                    className="block h-full"
+                  >
                     <Card className="hover:border-primary/50 transition-colors h-full">
                       <CardHeader>
                         <div className="flex items-start justify-between gap-2">

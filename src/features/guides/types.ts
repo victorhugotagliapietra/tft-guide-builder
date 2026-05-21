@@ -40,5 +40,13 @@ export type GuideRow = {
 
 export type GuideSummary = Pick<
   GuideRow,
-  "id" | "slug" | "title" | "description" | "tft_set" | "patch" | "difficulty" | "is_public" | "updated_at"
+  | "id"
+  | "slug"
+  | "title"
+  | "description"
+  | "tft_set"
+  | "patch"
+  | "difficulty"
+  | "is_public"
+  | "updated_at"
 >;

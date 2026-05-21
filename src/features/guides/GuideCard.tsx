@@ -51,12 +51,7 @@ export function GuideCard({ guide, variant = "public", showCopyLink = true }: Pr
                 </Badge>
               ))}
             {canCopy && guide.slug && (
-              <CopyLinkButton
-                href={`/g/${guide.slug}`}
-                iconOnly
-                variant="ghost"
-                stopPropagation
-              />
+              <CopyLinkButton href={`/g/${guide.slug}`} iconOnly variant="ghost" stopPropagation />
             )}
           </div>
         </div>

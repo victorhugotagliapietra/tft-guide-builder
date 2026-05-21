@@ -51,7 +51,10 @@ async function main() {
   let skipped = 0;
   const champions = (set17.champions ?? [])
     .filter((c: any) => {
-      if (!c.apiName || !c.name || c.cost < 1 || c.cost > 5) { skipped++; return false; }
+      if (!c.apiName || !c.name || c.cost < 1 || c.cost > 5) {
+        skipped++;
+        return false;
+      }
       return true;
     })
     .map((c) => {
@@ -142,9 +145,27 @@ async function main() {
   }
 
   function detectTier(iconPath: string, apiName: string): AugmentTier {
-    if (/_III[._]/.test(iconPath) || /-III\.tex$/i.test(iconPath) || /Missing-T3/i.test(iconPath) || /Tier3/i.test(iconPath)) return "prismatic";
-    if (/_II[._]/.test(iconPath) || /-II\.tex$/i.test(iconPath) || /Missing-T2/i.test(iconPath) || /Tier2/i.test(iconPath)) return "gold";
-    if (/_I[._]/.test(iconPath) || /-I\.tex$/i.test(iconPath) || /Missing-T1/i.test(iconPath) || /Tier1/i.test(iconPath)) return "silver";
+    if (
+      /_III[._]/.test(iconPath) ||
+      /-III\.tex$/i.test(iconPath) ||
+      /Missing-T3/i.test(iconPath) ||
+      /Tier3/i.test(iconPath)
+    )
+      return "prismatic";
+    if (
+      /_II[._]/.test(iconPath) ||
+      /-II\.tex$/i.test(iconPath) ||
+      /Missing-T2/i.test(iconPath) ||
+      /Tier2/i.test(iconPath)
+    )
+      return "gold";
+    if (
+      /_I[._]/.test(iconPath) ||
+      /-I\.tex$/i.test(iconPath) ||
+      /Missing-T1/i.test(iconPath) ||
+      /Tier1/i.test(iconPath)
+    )
+      return "silver";
     const m = iconPath.match(/(\d)\.tex$/i);
     if (m) {
       if (m[1] === "3") return "prismatic";
@@ -172,16 +193,33 @@ async function main() {
     const inSet = AUGMENT_UNIVERSAL_RE.test(api) || AUGMENT_CURRENT_SET_RE.test(api);
     if (!inSet) continue;
     augCandidates++;
-    if (!raw.name?.trim() || raw.hidden) { augSkipped++; continue; }
-    if (AUGMENT_APINAME_BLOCKLIST.some((re) => re.test(api))) { augSkipped++; continue; }
+    if (!raw.name?.trim() || raw.hidden) {
+      augSkipped++;
+      continue;
+    }
+    if (AUGMENT_APINAME_BLOCKLIST.some((re) => re.test(api))) {
+      augSkipped++;
+      continue;
+    }
     const iconPath = pickAugIcon(raw);
-    if (!iconPath || AUGMENT_ICON_BLOCKLIST.some((re) => re.test(iconPath))) { augSkipped++; continue; }
-    if (hasOldSetMarker(iconPath)) { augSkipped++; continue; }
+    if (!iconPath || AUGMENT_ICON_BLOCKLIST.some((re) => re.test(iconPath))) {
+      augSkipped++;
+      continue;
+    }
+    if (hasOldSetMarker(iconPath)) {
+      augSkipped++;
+      continue;
+    }
     const name = raw.name.trim();
-    if (name.length < 2 || name.length > 80 || /^TFT[_\d]/i.test(name)) { augSkipped++; continue; }
+    if (name.length < 2 || name.length > 80 || /^TFT[_\d]/i.test(name)) {
+      augSkipped++;
+      continue;
+    }
     if (augMap.has(api)) continue;
     const tier = detectTier(iconPath, api);
-    const associatedTraits = (raw.associatedTraits ?? []).filter((t: any) => typeof t === "string" && t.length > 0);
+    const associatedTraits = (raw.associatedTraits ?? []).filter(
+      (t: any) => typeof t === "string" && t.length > 0,
+    );
     const cleanedDesc = (raw.desc ?? "").trim();
     augMap.set(api, {
       id: makeId(api),
@@ -204,16 +242,24 @@ async function main() {
   const augByTier: Record<AugmentTier, any[]> = { silver: [], gold: [], prismatic: [] };
   for (const a of augments) augByTier[a.tier as AugmentTier].push(a);
 
-  console.log(`Augments: ${augments.length} kept / ${augCandidates} candidates (${augSkipped} skipped)`);
-  console.log(`  silver=${augByTier.silver.length}, gold=${augByTier.gold.length}, prismatic=${augByTier.prismatic.length}`);
+  console.log(
+    `Augments: ${augments.length} kept / ${augCandidates} candidates (${augSkipped} skipped)`,
+  );
+  console.log(
+    `  silver=${augByTier.silver.length}, gold=${augByTier.gold.length}, prismatic=${augByTier.prismatic.length}`,
+  );
 
   // Items — not set-specific
   const items = (tftRaw.items ?? [])
     .filter((i: any) => {
       if (!i.icon || !i.apiName || !i.name?.trim()) return false;
       const api: string = i.apiName;
-      return !api.includes("_placeholder") && !api.includes("Tutorial") &&
-             !api.includes("Debug") && !api.includes("Augment");
+      return (
+        !api.includes("_placeholder") &&
+        !api.includes("Tutorial") &&
+        !api.includes("Debug") &&
+        !api.includes("Augment")
+      );
     })
     .map((i: any) => {
       const isEmblem =

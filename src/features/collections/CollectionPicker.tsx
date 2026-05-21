@@ -5,11 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -59,13 +55,7 @@ type Props = {
  * NOT write directly to Supabase (except when creating a new collection,
  * which is a separate concern from membership).
  */
-export function CollectionPicker({
-  ownerId,
-  value,
-  onChange,
-  label,
-  description,
-}: Props) {
+export function CollectionPicker({ ownerId, value, onChange, label, description }: Props) {
   const [options, setOptions] = useState<CollectionOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -117,9 +107,7 @@ export function CollectionPicker({
   })();
 
   const toggle = (id: string) => {
-    onChange(
-      value.includes(id) ? value.filter((v) => v !== id) : [...value, id]
-    );
+    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -141,9 +129,7 @@ export function CollectionPicker({
       return;
     }
     setOptions((prev) =>
-      [...prev, { id: data.id, title: data.title }].sort((a, b) =>
-        a.title.localeCompare(b.title)
-      )
+      [...prev, { id: data.id, title: data.title }].sort((a, b) => a.title.localeCompare(b.title)),
     );
     onChange([...value, data.id]);
     setModalOpen(false);
@@ -192,7 +178,7 @@ export function CollectionPicker({
                     onClick={() => toggle(o.id)}
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2 text-left text-sm",
-                      "hover:bg-accent/15 focus:bg-accent/15 focus:outline-none transition-colors"
+                      "hover:bg-accent/15 focus:bg-accent/15 focus:outline-none transition-colors",
                     )}
                   >
                     <span
@@ -200,7 +186,7 @@ export function CollectionPicker({
                         "h-4 w-4 rounded-sm border flex items-center justify-center shrink-0",
                         checked
                           ? "bg-primary border-primary text-primary-foreground"
-                          : "border-input"
+                          : "border-input",
                       )}
                       aria-hidden="true"
                     >
@@ -222,7 +208,7 @@ export function CollectionPicker({
               }}
               className={cn(
                 "w-full flex items-center gap-2 px-3 py-2 text-sm text-primary",
-                "hover:bg-primary/10 focus:bg-primary/10 focus:outline-none transition-colors"
+                "hover:bg-primary/10 focus:bg-primary/10 focus:outline-none transition-colors",
               )}
             >
               <Plus className="h-4 w-4" />

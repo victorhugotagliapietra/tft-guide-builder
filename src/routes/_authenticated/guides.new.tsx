@@ -67,15 +67,13 @@ function NewGuide() {
     // Failure here is non-fatal — the guide already exists, so we surface
     // a warning and let the user fix it from the editor's picker.
     if (collectionIds.length > 0) {
-      const { error: linkErr } = await supabase
-        .from("collection_guides")
-        .insert(
-          collectionIds.map((cid, position) => ({
-            collection_id: cid,
-            guide_id: created.id,
-            position,
-          }))
-        );
+      const { error: linkErr } = await supabase.from("collection_guides").insert(
+        collectionIds.map((cid, position) => ({
+          collection_id: cid,
+          guide_id: created.id,
+          position,
+        })),
+      );
       if (linkErr) {
         console.warn("[guides.new] failed to attach collections:", linkErr.message);
         toast.warning("Guide created, but couldn't attach to all collections.");
@@ -116,11 +114,7 @@ function NewGuide() {
                   description="Pick one or more folders this guide should appear in. You can change it later."
                 />
               )}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={form.formState.isSubmitting}
-              >
+              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? "Creating..." : "Create guide"}
               </Button>
             </form>

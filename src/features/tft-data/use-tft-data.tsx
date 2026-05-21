@@ -88,10 +88,8 @@ const DUMMY_UNITS: TFTChampion[] = [
 // never disappears (Riot keeps old DDragon patches live indefinitely). Bump
 // when verifying a newer patch exposes additional augments.
 const DDRAGON_PATCH = "14.20.1";
-const DDRAGON_TFT_AUGMENTS_URL =
-  `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_PATCH}/data/en_US/tft-augments.json`;
-const DDRAGON_TFT_AUGMENT_IMG_BASE =
-  `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_PATCH}/img/tft-augment/`;
+const DDRAGON_TFT_AUGMENTS_URL = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_PATCH}/data/en_US/tft-augments.json`;
+const DDRAGON_TFT_AUGMENT_IMG_BASE = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_PATCH}/img/tft-augment/`;
 
 type DDragonAugment = { id: string; image?: { full?: string } };
 type DDragonAugmentsJson = { data?: Record<string, DDragonAugment> };
@@ -117,7 +115,7 @@ async function fetchDDragonAugmentMap(): Promise<Record<string, string>> {
       }
     }
     console.info(
-      `[TFT] DDragon augment map: ${Object.keys(out).length} entries from patch ${DDRAGON_PATCH}`
+      `[TFT] DDragon augment map: ${Object.keys(out).length} entries from patch ${DDRAGON_PATCH}`,
     );
     return out;
   } catch (err) {
@@ -206,10 +204,7 @@ export function TFTDataProvider({ children }: { children: ReactNode }) {
     return out;
   }, [baseChampions]);
 
-  const championMap = useMemo(
-    () => new Map(champions.map((c) => [c.apiName, c])),
-    [champions]
-  );
+  const championMap = useMemo(() => new Map(champions.map((c) => [c.apiName, c])), [champions]);
 
   const plannerCodeMap = useMemo(() => {
     const out = new Map<string, number>();
@@ -220,25 +215,20 @@ export function TFTDataProvider({ children }: { children: ReactNode }) {
   }, [champions]);
 
   const traits: TFTTrait[] = query.data?.traits ?? [];
-  const traitMap = useMemo(
-    () => new Map(traits.map((t) => [t.apiName, t])),
-    [traits]
-  );
+  const traitMap = useMemo(() => new Map(traits.map((t) => [t.apiName, t])), [traits]);
 
   const items: TFTItem[] = query.data?.items ?? [];
-  const itemMap = useMemo(
-    () => new Map(items.map((i) => [i.apiName, i])),
-    [items]
-  );
+  const itemMap = useMemo(() => new Map(items.map((i) => [i.apiName, i])), [items]);
 
   const augments: TFTAugment[] = query.data?.augments ?? [];
-  const augmentMap = useMemo(
-    () => new Map(augments.map((a) => [a.apiName, a])),
-    [augments]
-  );
+  const augmentMap = useMemo(() => new Map(augments.map((a) => [a.apiName, a])), [augments]);
 
   const augmentsByTier = useMemo(() => {
-    const out = { silver: [] as TFTAugment[], gold: [] as TFTAugment[], prismatic: [] as TFTAugment[] };
+    const out = {
+      silver: [] as TFTAugment[],
+      gold: [] as TFTAugment[],
+      prismatic: [] as TFTAugment[],
+    };
     for (const a of augments) out[a.tier].push(a);
     return out;
   }, [augments]);
@@ -275,7 +265,7 @@ export function TFTDataProvider({ children }: { children: ReactNode }) {
       query.data,
       query.isLoading,
       query.isError,
-    ]
+    ],
   );
 
   return <TFTDataContext.Provider value={value}>{children}</TFTDataContext.Provider>;

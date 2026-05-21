@@ -34,7 +34,7 @@ function ToolbarButton({
         "h-6 w-6 rounded flex items-center justify-center transition-colors",
         isActive
           ? "bg-foreground/15 text-foreground"
-          : "text-muted-foreground/60 hover:bg-foreground/5 hover:text-foreground"
+          : "text-muted-foreground/60 hover:bg-foreground/5 hover:text-foreground",
       )}
     >
       {children}
@@ -57,13 +57,7 @@ const ONCHANGE_DEBOUNCE_MS = 250;
  *   reads state on submit always sees the latest HTML
  * - Re-syncs when `value` changes externally (e.g. when loading from API)
  */
-function RichTextEditorImpl({
-  value,
-  onChange,
-  onBlur,
-  placeholder,
-  className,
-}: Props) {
+function RichTextEditorImpl({ value, onChange, onBlur, placeholder, className }: Props) {
   // The latest onChange/onBlur from the parent. Keeping these in refs lets us
   // construct stable TipTap handlers — TipTap captures handlers ONCE at editor
   // creation time and we don't want a fresh editor for every parent render.
@@ -127,7 +121,7 @@ function RichTextEditorImpl({
           "[&_em]:italic",
           "[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1",
           "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1",
-          "[&_li]:my-0.5 [&_li>p]:my-0"
+          "[&_li]:my-0.5 [&_li>p]:my-0",
         ),
       },
     },
@@ -140,7 +134,6 @@ function RichTextEditorImpl({
     return () => {
       flush();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Resync from outside (e.g., when an API load resets the form)
@@ -156,10 +149,7 @@ function RichTextEditorImpl({
   if (!editor) {
     return (
       <div
-        className={cn(
-          "rounded-md border border-input bg-background/60 min-h-[96px]",
-          className
-        )}
+        className={cn("rounded-md border border-input bg-background/60 min-h-[96px]", className)}
       />
     );
   }
@@ -168,7 +158,7 @@ function RichTextEditorImpl({
     <div
       className={cn(
         "rounded-md border border-input bg-background/60 focus-within:ring-1 focus-within:ring-ring transition-shadow",
-        className
+        className,
       )}
     >
       <div className="flex items-center gap-0.5 border-b border-border/40 px-1 py-0.5">
@@ -239,7 +229,7 @@ export const RichTextContent = memo(function RichTextContent({
         "[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1",
         "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1",
         "[&_li]:my-0.5 [&_li>p]:my-0",
-        className
+        className,
       )}
       dangerouslySetInnerHTML={{ __html: html }}
     />

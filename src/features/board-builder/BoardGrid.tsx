@@ -85,13 +85,20 @@ const ChampionImg = memo(function ChampionImg({
   }
 
   const src =
-    !primaryFailed && champion.iconUrl ? champion.iconUrl
-    : !fallbackFailed && champion.fallbackIconUrl ? champion.fallbackIconUrl
-    : null;
+    !primaryFailed && champion.iconUrl
+      ? champion.iconUrl
+      : !fallbackFailed && champion.fallbackIconUrl
+        ? champion.fallbackIconUrl
+        : null;
 
   if (!src) {
     return (
-      <div className={cn("flex items-center justify-center bg-muted/40 text-[9px] text-muted-foreground text-center leading-tight px-0.5", className)}>
+      <div
+        className={cn(
+          "flex items-center justify-center bg-muted/40 text-[9px] text-muted-foreground text-center leading-tight px-0.5",
+          className,
+        )}
+      >
         {champion.name.slice(0, 7)}
       </div>
     );
@@ -148,7 +155,7 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
               isFilled ? "opacity-100" : "opacity-0 group-hover/hex:opacity-100",
               isFilled && isGold && "text-yellow-400",
               isFilled && !isGold && "text-slate-200",
-              !isFilled && "text-white/40 hover:text-white"
+              !isFilled && "text-white/40 hover:text-white",
             )}
             aria-label={`Set star level ${level}`}
           >
@@ -157,7 +164,11 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
               strokeWidth={isFilled ? 2 : 1.5}
               stroke={isFilled ? "rgba(0,0,0,0.9)" : "currentColor"}
               fill={isFilled ? "currentColor" : "none"}
-              style={isFilled ? { paintOrder: "stroke fill", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))" } : undefined}
+              style={
+                isFilled
+                  ? { paintOrder: "stroke fill", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }
+                  : undefined
+              }
             />
           </button>
         );
@@ -216,7 +227,7 @@ function EditableItemIcons({
               "pointer-events-auto relative w-7 h-7 rounded-sm ring-1 ring-black/60 shadow-[0_1px_3px_rgba(0,0,0,0.6)]",
               "transition-[box-shadow,filter] duration-100",
               "hover:ring-destructive/80",
-              "group/item"
+              "group/item",
             )}
             aria-label={`Remove ${item?.name ?? key}`}
           >
@@ -256,7 +267,7 @@ function DraggableUnit({
       style={{ touchAction: "none" }}
       className={cn(
         "absolute inset-0 cursor-grab active:cursor-grabbing select-none",
-        isDragging && "opacity-30"
+        isDragging && "opacity-30",
       )}
     >
       <div
@@ -312,10 +323,7 @@ function DroppableHex({
           {/* Outer hex border layer — fills the full cell footprint with a
               hairline tone. The inner fill below sits 1.5px inset, revealing
               this layer as a thin outline around the polygon. */}
-          <div
-            className={cn("absolute inset-0", EMPTY_HEX_BORDER)}
-            style={{ clipPath: CLIP }}
-          />
+          <div className={cn("absolute inset-0", EMPTY_HEX_BORDER)} style={{ clipPath: CLIP }} />
           {/* Inner fill — actual hex background. transition-colors animates
               the place-target / hover-over highlights. */}
           <div
@@ -323,7 +331,7 @@ function DroppableHex({
               "absolute transition-colors",
               "bg-muted/15",
               isPlaceTarget && "bg-primary/15",
-              isOver && "bg-primary/30"
+              isOver && "bg-primary/30",
             )}
             style={{ inset: 1.5, clipPath: CLIP }}
           />
@@ -387,10 +395,7 @@ function BoardGridImpl({
   }, [units]);
 
   return (
-    <div
-      className="relative"
-      style={{ width: HEX_CONTAINER_W, height: HEX_CONTAINER_H }}
-    >
+    <div className="relative" style={{ width: HEX_CONTAINER_W, height: HEX_CONTAINER_H }}>
       {Array.from({ length: BOARD_ROWS }, (_, row) =>
         Array.from({ length: BOARD_COLS }, (_, col) => {
           const pos = coordsToPosition(row, col);
@@ -421,11 +426,7 @@ function BoardGridImpl({
                     tabIndex={0}
                     aria-label={`${champion.name} ${unit.starLevel}★`}
                   >
-                    <DraggableUnit
-                      pos={pos}
-                      champion={champion}
-                      isSelected={selectedPos === pos}
-                    />
+                    <DraggableUnit pos={pos} champion={champion} isSelected={selectedPos === pos} />
                   </div>
                   <StarControl
                     starLevel={unit.starLevel}
@@ -442,7 +443,7 @@ function BoardGridImpl({
               ) : null}
             </DroppableHex>
           );
-        })
+        }),
       )}
     </div>
   );

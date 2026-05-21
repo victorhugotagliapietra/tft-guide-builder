@@ -71,14 +71,7 @@ function EditGuide() {
   });
   const { reset } = form;
 
-  const {
-    steps,
-    setSteps,
-    addStep,
-    updateStep,
-    removeStep,
-    duplicateStep,
-  } = useBoardSteps();
+  const { steps, setSteps, addStep, updateStep, removeStep, duplicateStep } = useBoardSteps();
 
   useEffect(() => {
     if (!user) return;
@@ -92,14 +85,11 @@ function EditGuide() {
         supabase
           .from("guides")
           .select(
-            "author_id, slug, title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, is_public, board_steps"
+            "author_id, slug, title, description, tft_set, patch, playstyle, difficulty, final_comp_notes, is_public, board_steps",
           )
           .eq("id", id)
           .single(),
-        supabase
-          .from("collection_guides")
-          .select("collection_id")
-          .eq("guide_id", id),
+        supabase.from("collection_guides").select("collection_id").eq("guide_id", id),
       ]);
       if (cancelled) return;
       const { data, error } = guideRes;
@@ -114,7 +104,9 @@ function EditGuide() {
         return;
       }
       setSlug(data.slug);
-      setCollectionIds(((memberRes.data ?? []) as { collection_id: string }[]).map((r) => r.collection_id));
+      setCollectionIds(
+        ((memberRes.data ?? []) as { collection_id: string }[]).map((r) => r.collection_id),
+      );
       reset({
         title: data.title,
         description: data.description ?? "",
@@ -153,17 +145,13 @@ function EditGuide() {
       writes.push(
         supabase
           .from("collection_guides")
-          .insert(added.map((cid) => ({ collection_id: cid, guide_id: id })))
+          .insert(added.map((cid) => ({ collection_id: cid, guide_id: id }))),
       );
     }
     if (removed.length > 0) {
       for (const cid of removed) {
         writes.push(
-          supabase
-            .from("collection_guides")
-            .delete()
-            .eq("collection_id", cid)
-            .eq("guide_id", id)
+          supabase.from("collection_guides").delete().eq("collection_id", cid).eq("guide_id", id),
         );
       }
     }
@@ -213,9 +201,7 @@ function EditGuide() {
   };
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-12 text-muted-foreground">Loading...</div>
-    );
+    return <div className="mx-auto max-w-6xl px-4 py-12 text-muted-foreground">Loading...</div>;
   }
 
   const isPublic = form.watch("is_public");
@@ -375,15 +361,9 @@ function EditGuide() {
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                      {field.value ? (
-                        <Globe className="h-4 w-4" />
-                      ) : (
-                        <Lock className="h-4 w-4" />
-                      )}
+                      {field.value ? <Globe className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                       <div>
-                        <p className="text-sm font-medium">
-                          {field.value ? "Published" : "Draft"}
-                        </p>
+                        <p className="text-sm font-medium">{field.value ? "Published" : "Draft"}</p>
                         <p className="text-xs text-muted-foreground">
                           {field.value
                             ? "Anyone with the link can view this guide."
@@ -392,10 +372,7 @@ function EditGuide() {
                       </div>
                     </div>
                     <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
                     </FormControl>
                   </FormItem>
                 )}

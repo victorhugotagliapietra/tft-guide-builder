@@ -45,13 +45,7 @@ const BoardStepListItem = memo(function BoardStepListItem({
   );
 });
 
-export function BoardStepList({
-  steps,
-  onAdd,
-  onUpdate,
-  onRemove,
-  onDuplicate,
-}: Props) {
+export function BoardStepList({ steps, onAdd, onUpdate, onRemove, onDuplicate }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleAdd = useCallback(() => {
@@ -66,7 +60,7 @@ export function BoardStepList({
       setExpandedId((prev) => (prev === id ? null : prev));
       onRemove(id);
     },
-    [onRemove]
+    [onRemove],
   );
 
   return (

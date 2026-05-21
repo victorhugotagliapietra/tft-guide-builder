@@ -34,9 +34,7 @@ export function useBoardSteps() {
   }, []);
 
   const removeStep = useCallback((id: string) => {
-    setSteps((prev) =>
-      prev.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i }))
-    );
+    setSteps((prev) => prev.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i })));
   }, []);
 
   const duplicateStep = useCallback((id: string) => {

@@ -1,299 +1,291 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
+    PostgrestVersion: "14.5";
+  };
   public: {
     Tables: {
       guides: {
         Row: {
-          author_id: string
-          board_steps: Json
-          created_at: string
-          description: string
-          difficulty: Database["public"]["Enums"]["guide_difficulty"]
-          final_comp_notes: string
-          id: string
-          is_public: boolean
-          patch: string
-          playstyle: string
-          slug: string
-          tft_set: string
-          title: string
-          updated_at: string
-        }
+          author_id: string;
+          board_steps: Json;
+          created_at: string;
+          description: string;
+          difficulty: Database["public"]["Enums"]["guide_difficulty"];
+          final_comp_notes: string;
+          id: string;
+          is_public: boolean;
+          patch: string;
+          playstyle: string;
+          slug: string;
+          tft_set: string;
+          title: string;
+          updated_at: string;
+        };
         Insert: {
-          author_id: string
-          board_steps?: Json
-          created_at?: string
-          description?: string
-          difficulty?: Database["public"]["Enums"]["guide_difficulty"]
-          final_comp_notes?: string
-          id?: string
-          is_public?: boolean
-          patch?: string
-          playstyle?: string
-          slug: string
-          tft_set?: string
-          title: string
-          updated_at?: string
-        }
+          author_id: string;
+          board_steps?: Json;
+          created_at?: string;
+          description?: string;
+          difficulty?: Database["public"]["Enums"]["guide_difficulty"];
+          final_comp_notes?: string;
+          id?: string;
+          is_public?: boolean;
+          patch?: string;
+          playstyle?: string;
+          slug: string;
+          tft_set?: string;
+          title: string;
+          updated_at?: string;
+        };
         Update: {
-          author_id?: string
-          board_steps?: Json
-          created_at?: string
-          description?: string
-          difficulty?: Database["public"]["Enums"]["guide_difficulty"]
-          final_comp_notes?: string
-          id?: string
-          is_public?: boolean
-          patch?: string
-          playstyle?: string
-          slug?: string
-          tft_set?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
+          author_id?: string;
+          board_steps?: Json;
+          created_at?: string;
+          description?: string;
+          difficulty?: Database["public"]["Enums"]["guide_difficulty"];
+          final_comp_notes?: string;
+          id?: string;
+          is_public?: boolean;
+          patch?: string;
+          playstyle?: string;
+          slug?: string;
+          tft_set?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       collection_guides: {
         Row: {
-          collection_id: string
-          guide_id: string
-          position: number
-          added_at: string
-        }
+          collection_id: string;
+          guide_id: string;
+          position: number;
+          added_at: string;
+        };
         Insert: {
-          collection_id: string
-          guide_id: string
-          position?: number
-          added_at?: string
-        }
+          collection_id: string;
+          guide_id: string;
+          position?: number;
+          added_at?: string;
+        };
         Update: {
-          collection_id?: string
-          guide_id?: string
-          position?: number
-          added_at?: string
-        }
-        Relationships: []
-      }
+          collection_id?: string;
+          guide_id?: string;
+          position?: number;
+          added_at?: string;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
-          avatar_url: string | null
-          created_at: string
-          display_name: string | null
-          id: string
-          updated_at: string
-          username: string | null
-        }
+          avatar_url: string | null;
+          created_at: string;
+          display_name: string | null;
+          id: string;
+          updated_at: string;
+          username: string | null;
+        };
         Insert: {
-          avatar_url?: string | null
-          created_at?: string
-          display_name?: string | null
-          id: string
-          updated_at?: string
-          username?: string | null
-        }
+          avatar_url?: string | null;
+          created_at?: string;
+          display_name?: string | null;
+          id: string;
+          updated_at?: string;
+          username?: string | null;
+        };
         Update: {
-          avatar_url?: string | null
-          created_at?: string
-          display_name?: string | null
-          id?: string
-          updated_at?: string
-          username?: string | null
-        }
-        Relationships: []
-      }
+          avatar_url?: string | null;
+          created_at?: string;
+          display_name?: string | null;
+          id?: string;
+          updated_at?: string;
+          username?: string | null;
+        };
+        Relationships: [];
+      };
       collections: {
         Row: {
-          id: string
-          owner_id: string
-          title: string
-          description: string
-          is_public: boolean
-          created_at: string
-          updated_at: string
-        }
+          id: string;
+          owner_id: string;
+          title: string;
+          description: string;
+          is_public: boolean;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          id?: string
-          owner_id: string
-          title: string
-          description?: string
-          is_public?: boolean
-          created_at?: string
-          updated_at?: string
-        }
+          id?: string;
+          owner_id: string;
+          title: string;
+          description?: string;
+          is_public?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          id?: string
-          owner_id?: string
-          title?: string
-          description?: string
-          is_public?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-    }
+          id?: string;
+          owner_id?: string;
+          title?: string;
+          description?: string;
+          is_public?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
       guide_redirect_info: {
-        Args: { p_slug: string }
+        Args: { p_slug: string };
         Returns: {
-          exists_flag: boolean
-          is_public: boolean
-          author_username: string | null
-        }[]
-      }
+          exists_flag: boolean;
+          is_public: boolean;
+          author_username: string | null;
+        }[];
+      };
       collection_redirect_info: {
-        Args: { p_id: string }
+        Args: { p_id: string };
         Returns: {
-          exists_flag: boolean
-          is_public: boolean
-          owner_username: string | null
-        }[]
-      }
+          exists_flag: boolean;
+          is_public: boolean;
+          owner_username: string | null;
+        }[];
+      };
       is_username_available: {
-        Args: { p_username: string }
-        Returns: boolean
-      }
-    }
+        Args: { p_username: string };
+        Returns: boolean;
+      };
+    };
     Enums: {
-      guide_difficulty: "easy" | "medium" | "hard"
-    }
+      guide_difficulty: "easy" | "medium" | "hard";
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
+      [_ in never]: never;
+    };
+  };
+};
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+      Row: infer R;
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
       }
       ? R
       : never
-    : never
+    : never;
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+      Insert: infer I;
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
+        Insert: infer I;
       }
       ? I
       : never
-    : never
+    : never;
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+      Update: infer U;
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
+        Update: infer U;
       }
       ? U
       : never
-    : never
+    : never;
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+    : never;
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+    : never;
 
 export const Constants = {
   public: {
@@ -301,4 +293,4 @@ export const Constants = {
       guide_difficulty: ["easy", "medium", "hard"],
     },
   },
-} as const
+} as const;

@@ -46,9 +46,7 @@ export function CopyLinkButton({
       e.stopPropagation();
     }
     const fullUrl =
-      typeof window === "undefined"
-        ? href
-        : new URL(href, window.location.origin).toString();
+      typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
     try {
       await navigator.clipboard.writeText(fullUrl);
       setCopied(true);

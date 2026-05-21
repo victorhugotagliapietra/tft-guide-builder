@@ -4,10 +4,7 @@ import type { GuideSummary } from "@/features/guides/types";
 // Title is short and required; description is optional with a high cap so
 // creators can use it as a paragraph-long pitch on the collection page.
 export const collectionFormSchema = z.object({
-  title: z
-    .string()
-    .min(1, "Title is required")
-    .max(80, "Title must be 80 characters or fewer"),
+  title: z.string().min(1, "Title is required").max(80, "Title must be 80 characters or fewer"),
   description: z.string().max(2000).default(""),
   is_public: z.boolean().default(false),
 });

@@ -18,20 +18,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  Check,
-  ExternalLink,
-  Globe,
-  GripVertical,
-  Lock,
-  Trash2,
-} from "lucide-react";
+import { Check, ExternalLink, Globe, GripVertical, Lock, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import {
-  collectionFormSchema,
-  type CollectionFormValues,
-} from "@/features/collections/types";
+import { collectionFormSchema, type CollectionFormValues } from "@/features/collections/types";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,9 +124,7 @@ function EditCollection() {
         is_public: collectionRes.data.is_public,
       });
 
-      const positions = new Map(
-        (junctionRes.data ?? []).map((r) => [r.guide_id, r.position])
-      );
+      const positions = new Map((junctionRes.data ?? []).map((r) => [r.guide_id, r.position]));
       const guideIds = (junctionRes.data ?? []).map((r) => r.guide_id);
 
       if (guideIds.length === 0) {
@@ -151,9 +139,7 @@ function EditCollection() {
       // doesn't preserve order.
       const { data: guideRows } = await supabase
         .from("guides")
-        .select(
-          "id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at"
-        )
+        .select("id, slug, title, description, tft_set, patch, difficulty, is_public, updated_at")
         .in("id", guideIds);
       if (cancelled) return;
       const sorted = ((guideRows as GuideSummary[]) ?? [])
@@ -191,7 +177,7 @@ function EditCollection() {
       reset(values);
       toast.success("Saved");
     },
-    [id, reset]
+    [id, reset],
   );
 
   // ----- Debounced auto-save of guide order -----
@@ -205,7 +191,7 @@ function EditCollection() {
             .from("collection_guides")
             .update({ position })
             .eq("collection_id", id)
-            .eq("guide_id", m.id)
+            .eq("guide_id", m.id),
         );
         const results = await Promise.all(updates);
         const firstError = results.find((r) => r.error)?.error;
@@ -214,13 +200,11 @@ function EditCollection() {
         }
       }, 600);
     },
-    [id]
+    [id],
   );
 
   // ----- Drag-and-drop -----
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -259,9 +243,7 @@ function EditCollection() {
   };
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-4xl px-4 py-12 text-muted-foreground">Loading…</div>
-    );
+    return <div className="mx-auto max-w-4xl px-4 py-12 text-muted-foreground">Loading…</div>;
   }
 
   const isPublic = form.watch("is_public");
@@ -280,11 +262,7 @@ function EditCollection() {
               owner via that URL today, but the moment they flip the publish
               switch the same link works for everyone, so it's useful to
               have ready in the clipboard already. */}
-          <CopyLinkButton
-            href={`/collection/${id}`}
-            variant="outline"
-            stopPropagation={false}
-          />
+          <CopyLinkButton href={`/collection/${id}`} variant="outline" stopPropagation={false} />
           {isPublic && (
             <Button asChild variant="outline" size="sm">
               <Link to="/collection/$id" params={{ id }}>
@@ -303,8 +281,8 @@ function EditCollection() {
                 <AlertDialogTitle>Delete this collection?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This removes the collection and its share link. The guides inside it are not
-                  deleted — they stay on your profile and remain editable, just unassigned from
-                  this folder.
+                  deleted — they stay on your profile and remain editable, just unassigned from this
+                  folder.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -343,11 +321,7 @@ function EditCollection() {
                   <FormItem>
                     <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Textarea
-                        rows={4}
-                        placeholder="What's this collection about?"
-                        {...field}
-                      />
+                      <Textarea rows={4} placeholder="What's this collection about?" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -394,7 +368,7 @@ function EditCollection() {
                   "w-full transition-colors",
                   !isDirty &&
                     !isSubmitting &&
-                    "bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-100"
+                    "bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-100",
                 )}
               >
                 {isSubmitting ? (
@@ -416,27 +390,32 @@ function EditCollection() {
         <CardHeader>
           <CardTitle>Guides ({members.length})</CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Drag to reorder — changes save automatically. To add a guide to this collection,
-            open the guide and tick this collection in its picker.
+            Drag to reorder — changes save automatically. To add a guide to this collection, open
+            the guide and tick this collection in its picker.
           </p>
         </CardHeader>
         <CardContent>
           {members.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No guides yet. Open any of <Link to="/dashboard" className="underline">your
-              guides</Link> and tick this collection in its picker to add it here.
+              No guides yet. Open any of{" "}
+              <Link to="/dashboard" className="underline">
+                your guides
+              </Link>{" "}
+              and tick this collection in its picker to add it here.
             </p>
           ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={members.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={members.map((m) => m.id)}
+                strategy={verticalListSortingStrategy}
+              >
                 <ul className="space-y-2">
                   {members.map((m, i) => (
-                    <SortableRow
-                      key={m.id}
-                      guide={m}
-                      index={i}
-                      onEject={() => ejectGuide(m.id)}
-                    />
+                    <SortableRow key={m.id} guide={m} index={i} onEject={() => ejectGuide(m.id)} />
                   ))}
                 </ul>
               </SortableContext>

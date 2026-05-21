@@ -48,9 +48,7 @@ export function SiteHeader() {
       <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group">
           <HexcraftMark className="h-7 w-7" />
-          <span
-            className="font-display text-lg font-semibold tracking-tight text-foreground/95 group-hover:text-foreground transition-colors"
-          >
+          <span className="font-display text-lg font-semibold tracking-tight text-foreground/95 group-hover:text-foreground transition-colors">
             Hexcraft
           </span>
         </Link>
@@ -158,12 +156,7 @@ export function SiteHeader() {
  */
 function HexcraftMark({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
-      fill="none"
-      aria-hidden="true"
-      className={className}
-    >
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" className={className}>
       {/* Outer hex stroke — slightly bigger than the inner cell so the
           composition reads as a board with one occupied tile. */}
       <path
@@ -174,10 +167,7 @@ function HexcraftMark({ className }: { className?: string }) {
         className="text-primary/70"
       />
       {/* Inner lit hex — the "honey" fill. */}
-      <path
-        d="M16 11 L22 14.5 L22 21.5 L16 25 L10 21.5 L10 14.5 Z"
-        className="fill-primary"
-      />
+      <path d="M16 11 L22 14.5 L22 21.5 L16 25 L10 21.5 L10 14.5 Z" className="fill-primary" />
     </svg>
   );
 }

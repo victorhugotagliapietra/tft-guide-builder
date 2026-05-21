@@ -36,7 +36,7 @@ const TIER_PRIORITY: Record<TraitBreakpoint["tier"], number> = {
 export function computeActiveTraits(
   units: { championKey: string }[],
   championMap: Map<string, TFTChampion>,
-  traitMap: Map<string, TFTTrait>
+  traitMap: Map<string, TFTTrait>,
 ): ActiveTrait[] {
   // Build a secondary lookup keyed by display name so we can resolve the
   // tokens that champions carry on their `traits` array.
@@ -109,9 +109,7 @@ export function computeActiveTraits(
 export function getActiveTraitsOnly(
   units: { championKey: string }[],
   championMap: Map<string, TFTChampion>,
-  traitMap: Map<string, TFTTrait>
+  traitMap: Map<string, TFTTrait>,
 ): ActiveTrait[] {
-  return computeActiveTraits(units, championMap, traitMap).filter(
-    (at) => at.activeBp !== null
-  );
+  return computeActiveTraits(units, championMap, traitMap).filter((at) => at.activeBp !== null);
 }

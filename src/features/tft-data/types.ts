@@ -1,20 +1,16 @@
 export type TFTChampion = {
-  apiName: string;         // e.g. "TFT17_Jinx"
+  apiName: string; // e.g. "TFT17_Jinx"
   characterName: string;
-  name: string;            // display name, e.g. "Jinx"
-  cost: number;            // 1–5; 0 for special units (Training Dummy)
+  name: string; // display name, e.g. "Jinx"
+  cost: number; // 1–5; 0 for special units (Training Dummy)
   traits: string[];
-  squareIconPath: string;  // raw path from CDragon JSON
-  iconUrl: string;         // CDragon URL (lowercase, .tex→.png)
+  squareIconPath: string; // raw path from CDragon JSON
+  iconUrl: string; // CDragon URL (lowercase, .tex→.png)
   fallbackIconUrl: string; // rerollcdn URL, used if CDragon returns 404
   plannerId?: number;
 };
 
-export type TFTItemCategory =
-  | "normal"
-  | "emblem"
-  | "artifact"
-  | "trait";
+export type TFTItemCategory = "normal" | "emblem" | "artifact" | "trait";
 
 /** Loose role tag for sorting the Normal tab. Derived from item composition. */
 export type ItemRole = "tank" | "support" | "flex" | "ap" | "fighter";

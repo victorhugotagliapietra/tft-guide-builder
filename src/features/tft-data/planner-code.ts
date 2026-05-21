@@ -76,9 +76,7 @@ import type { BoardUnit } from "@/features/board-builder/types";
 // Types
 // ---------------------------------------------------------------------------
 
-export type PlannerResult =
-  | { ok: true; code: string }
-  | { ok: false; error: string };
+export type PlannerResult = { ok: true; code: string } | { ok: false; error: string };
 
 /** apiName → team_planner_code (12-bit value). */
 export type PlannerCodeMap = Map<string, number>;
@@ -138,7 +136,7 @@ export function generatePlannerCode(
   units: BoardUnit[],
   setNumber: number,
   plannerCodeMap: PlannerCodeMap,
-  championLookup: ChampionInfoLookup
+  championLookup: ChampionInfoLookup,
 ): PlannerResult {
   if (!units || units.length === 0) {
     return { ok: false, error: "Board is empty — add at least one champion." };
@@ -220,14 +218,14 @@ export function generatePlannerCode(
     const overflow = deduped.length - SLOT_COUNT;
     console.warn(
       `[planner-code] board has ${deduped.length} unique champions; ` +
-      `dropping ${overflow} beyond the planner's 10-slot max`
+        `dropping ${overflow} beyond the planner's 10-slot max`,
     );
   }
   const toExport = deduped.slice(0, SLOT_COUNT);
 
   // ── Phase 4: emit slot hex (lowercase, zero-padded to 3 chars) ──────────
   const slots: string[] = toExport.map((u) =>
-    u.code.toString(16).padStart(SLOT_HEX_CHARS, "0").toLowerCase()
+    u.code.toString(16).padStart(SLOT_HEX_CHARS, "0").toLowerCase(),
   );
   while (slots.length < SLOT_COUNT) slots.push(EMPTY_SLOT);
 
@@ -249,12 +247,12 @@ export function generatePlannerCode(
     .join(" | ");
   console.debug(
     `[planner-code] generated ${code} ` +
-    `(encoded=${toExport.length}, skipped=${skipped.length}, ` +
-    `payload="${slots.join("")}")` +
-    (toExport.length > 0 ? ` | ${breakdown}` : "") +
-    (skipped.length > 0
-      ? ` | dropped: ${skipped.map((s) => `${s.championKey}[${s.reason}]`).join(", ")}`
-      : "")
+      `(encoded=${toExport.length}, skipped=${skipped.length}, ` +
+      `payload="${slots.join("")}")` +
+      (toExport.length > 0 ? ` | ${breakdown}` : "") +
+      (skipped.length > 0
+        ? ` | dropped: ${skipped.map((s) => `${s.championKey}[${s.reason}]`).join(", ")}`
+        : ""),
   );
 
   return { ok: true, code };
@@ -273,7 +271,7 @@ export function generatePlannerCode(
  */
 export function decodePlannerCode(
   code: string,
-  plannerCodeMap: PlannerCodeMap
+  plannerCodeMap: PlannerCodeMap,
 ): { ok: true; payload: DecodedPlannerPayload } | { ok: false; error: string } {
   if (typeof code !== "string" || !code.trim()) {
     return { ok: false, error: "Empty planner code." };
@@ -305,7 +303,7 @@ export function decodePlannerCode(
     const championKey = reverse.get(value);
     if (!championKey) {
       console.warn(
-        `[planner-code] unknown code ${value} (0x${value.toString(16)}) in slot ${slot} (set ${set})`
+        `[planner-code] unknown code ${value} (0x${value.toString(16)}) in slot ${slot} (set ${set})`,
       );
       continue;
     }
@@ -347,9 +345,13 @@ if (
     ]);
     const sampleCostLookup: ChampionInfoLookup = (api) => {
       const costs: Record<string, number> = {
-        TFT17_Aatrox: 1, TFT17_Caitlyn: 1,
-        TFT17_Akali: 2, TFT17_Jax: 2,
-        TFT17_Aurora: 3, TFT17_Diana: 3, TFT17_Lulu: 3,
+        TFT17_Aatrox: 1,
+        TFT17_Caitlyn: 1,
+        TFT17_Akali: 2,
+        TFT17_Jax: 2,
+        TFT17_Aurora: 3,
+        TFT17_Diana: 3,
+        TFT17_Lulu: 3,
       };
       return costs[api] !== undefined ? { cost: costs[api] } : undefined;
     };
@@ -364,22 +366,78 @@ if (
     } else {
       console.debug(
         `[planner-code self-test A] decoded Riot sample: set=${decA.payload.set}, ` +
-        `${decA.payload.units.length} units (` +
-        decA.payload.units.map((u) => `${u.championKey}@slot${u.slot}`).join(", ") +
-        ")"
+          `${decA.payload.units.length} units (` +
+          decA.payload.units.map((u) => `${u.championKey}@slot${u.slot}`).join(", ") +
+          ")",
       );
     }
 
     // Fixture B: encode the same board (positions arbitrary — sort uses
     // cost+apiName, not position) and assert byte-for-byte equality.
     const fixtureUnits: BoardUnit[] = [
-      { id: "1", championKey: "TFT17_Diana",    position:  3, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "2", championKey: "TFT17_Lulu",     position:  4, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "3", championKey: "TFT17_Aatrox",   position:  5, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "4", championKey: "TFT17_Jax",      position: 10, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "5", championKey: "TFT17_Caitlyn",  position: 14, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "6", championKey: "TFT17_Akali",    position: 16, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
-      { id: "7", championKey: "TFT17_Aurora",   position: 20, items: [], starLevel: 1, isCarry: false, isItemHolder: false },
+      {
+        id: "1",
+        championKey: "TFT17_Diana",
+        position: 3,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
+      {
+        id: "2",
+        championKey: "TFT17_Lulu",
+        position: 4,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
+      {
+        id: "3",
+        championKey: "TFT17_Aatrox",
+        position: 5,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
+      {
+        id: "4",
+        championKey: "TFT17_Jax",
+        position: 10,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
+      {
+        id: "5",
+        championKey: "TFT17_Caitlyn",
+        position: 14,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
+      {
+        id: "6",
+        championKey: "TFT17_Akali",
+        position: 16,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
+      {
+        id: "7",
+        championKey: "TFT17_Aurora",
+        position: 20,
+        items: [],
+        starLevel: 1,
+        isCarry: false,
+        isItemHolder: false,
+      },
     ];
     const encB = generatePlannerCode(fixtureUnits, 17, sampleMap, sampleCostLookup);
     if (!encB.ok) {

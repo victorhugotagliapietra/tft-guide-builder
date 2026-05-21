@@ -71,13 +71,9 @@ function Dashboard() {
         </div>
       </div>
 
-      {state.status === "loading" && (
-        <p className="text-muted-foreground">Loading...</p>
-      )}
+      {state.status === "loading" && <p className="text-muted-foreground">Loading...</p>}
 
-      {state.status === "error" && (
-        <p className="text-destructive text-sm">{state.message}</p>
-      )}
+      {state.status === "error" && <p className="text-destructive text-sm">{state.message}</p>}
 
       {state.status === "ok" && state.guides.length === 0 && (
         <Card>

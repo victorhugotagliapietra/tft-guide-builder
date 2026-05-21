@@ -1,13 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  ArrowRight,
-  ClipboardCopy,
-  LayoutDashboard,
-  Layers,
-  Share2,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, ClipboardCopy, LayoutDashboard, Layers, Share2, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { useAuth } from "@/hooks/use-auth";
 import { useGoogleSignIn } from "@/hooks/use-google-signin";
@@ -78,13 +71,12 @@ function Index() {
               <Sparkles className="h-3 w-3" /> A workshop for TFT creators
             </Badge>
             <h1 className="font-display text-5xl md:text-7xl font-bold leading-[1.05] tracking-tight">
-              Comps,{" "}
-              <span className="text-primary">level by level.</span>
+              Comps, <span className="text-primary">level by level.</span>
             </h1>
             <p className="mt-7 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
               Hexcraft turns your knowledge into shareable, step-by-step TFT guides. Sketch the
-              level-4 econ board, plan the level-7 roll, lock in the capped roster — all at one
-              link your viewers can paste into the client.
+              level-4 econ board, plan the level-7 roll, lock in the capped roster — all at one link
+              your viewers can paste into the client.
             </p>
             <div className="mt-10 flex items-center justify-center gap-3 flex-wrap">
               {user ? (
@@ -106,12 +98,7 @@ function Index() {
                 </Button>
               )}
               {guides.length > 0 && (
-                <Button
-                  asChild
-                  variant="outline"
-                  size="lg"
-                  className="text-base h-12 px-7"
-                >
+                <Button asChild variant="outline" size="lg" className="text-base h-12 px-7">
                   <a href="#recent">Browse fresh comps</a>
                 </Button>
               )}
@@ -185,12 +172,7 @@ function Index() {
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {guides.map((g) => (
-                <Link
-                  key={g.id}
-                  to="/g/$slug"
-                  params={{ slug: g.slug }}
-                  className="block h-full"
-                >
+                <Link key={g.id} to="/g/$slug" params={{ slug: g.slug }} className="block h-full">
                   <Card className="h-full transition-all hover:border-primary/40 hover:-translate-y-0.5">
                     <CardContent className="p-5">
                       <div className="flex flex-wrap gap-1.5 mb-3">

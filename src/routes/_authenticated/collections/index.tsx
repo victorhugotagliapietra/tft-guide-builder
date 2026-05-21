@@ -142,9 +142,7 @@ function CollectionsList() {
       </div>
 
       {state.status === "loading" && <p className="text-muted-foreground">Loading…</p>}
-      {state.status === "error" && (
-        <p className="text-destructive text-sm">{state.message}</p>
-      )}
+      {state.status === "error" && <p className="text-destructive text-sm">{state.message}</p>}
       {state.status === "ok" && state.items.length === 0 && (
         <Card>
           <CardContent className="py-16 text-center">
@@ -214,8 +212,8 @@ function CollectionsList() {
           <DialogHeader>
             <DialogTitle>New collection</DialogTitle>
             <DialogDescription>
-              Group related guides into a shareable folder. You can rename, describe, and
-              publish it on the next screen.
+              Group related guides into a shareable folder. You can rename, describe, and publish it
+              on the next screen.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-3">

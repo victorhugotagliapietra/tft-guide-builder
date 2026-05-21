@@ -21,8 +21,8 @@ import { cn } from "@/lib/utils";
 
 // Visual tier rings — same palette family as AugmentsPanel for consistency.
 const TIER_RING: Record<TFTAugmentTier, string> = {
-  silver:    "ring-slate-400/55",
-  gold:      "ring-yellow-500/65 shadow-[0_0_6px_-2px_rgba(250,204,21,0.45)]",
+  silver: "ring-slate-400/55",
+  gold: "ring-yellow-500/65 shadow-[0_0_6px_-2px_rgba(250,204,21,0.45)]",
   prismatic: "ring-fuchsia-400/65 shadow-[0_0_8px_-2px_rgba(232,121,249,0.55)]",
 };
 
@@ -35,13 +35,7 @@ function AugmentSlotIcon({ augment }: { augment: TFTAugment }) {
 }
 
 // Draggable wrapper for an assigned augment — lets the user swap or remove.
-function DraggableAssignedAugment({
-  index,
-  augment,
-}: {
-  index: number;
-  augment: TFTAugment;
-}) {
+function DraggableAssignedAugment({ index, augment }: { index: number; augment: TFTAugment }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `slotaug:${index}`,
   });
@@ -56,7 +50,7 @@ function DraggableAssignedAugment({
       className={cn(
         "absolute inset-0 rounded-lg overflow-hidden ring-2 cursor-grab active:cursor-grabbing select-none",
         TIER_RING[augment.tier],
-        isDragging && "opacity-30"
+        isDragging && "opacity-30",
       )}
     >
       <AugmentSlotIcon augment={augment} />
@@ -88,10 +82,12 @@ function AugmentSlot({
         !augment && "border border-dashed border-white/15 bg-background/30",
         !augment && isDraggingAugment && "border-primary/40 bg-primary/5",
         // Drop-target highlight while an augment is hovering this slot.
-        isOver && isDraggingAugment && "ring-2 ring-primary/70"
+        isOver && isDraggingAugment && "ring-2 ring-primary/70",
       )}
       title={augment ? augment.name : `Augment slot ${index + 1}`}
-      aria-label={augment ? `${augment.name} (slot ${index + 1})` : `Empty augment slot ${index + 1}`}
+      aria-label={
+        augment ? `${augment.name} (slot ${index + 1})` : `Empty augment slot ${index + 1}`
+      }
     >
       {/* Empty placeholder icon */}
       {!augment && (
@@ -144,7 +140,7 @@ export function ReadOnlyAugmentSlotsPanel({ slots }: { slots: AugmentSlots }) {
                 // Empty slot in read-only mode: faint outline, no dashed
                 // border (less visual noise than the editor's "this is a
                 // drop target" treatment).
-                !augment && "border border-white/[0.06] bg-background/20"
+                !augment && "border border-white/[0.06] bg-background/20",
               )}
               title={augment?.name ?? ""}
               aria-label={augment ? augment.name : `Empty augment slot ${i + 1}`}
@@ -153,7 +149,7 @@ export function ReadOnlyAugmentSlotsPanel({ slots }: { slots: AugmentSlots }) {
                 <div
                   className={cn(
                     "absolute inset-0 rounded-lg overflow-hidden ring-2",
-                    TIER_RING[augment.tier]
+                    TIER_RING[augment.tier],
                   )}
                 >
                   <AugmentSlotIcon augment={augment} />
@@ -206,7 +202,7 @@ export function ReadOnlyAugmentRow({ slots }: { slots: AugmentSlots }) {
         "[&::-webkit-scrollbar]:h-1",
         "[&::-webkit-scrollbar-track]:bg-transparent",
         "[&::-webkit-scrollbar-thumb]:rounded-full",
-        "[&::-webkit-scrollbar-thumb]:bg-white/10"
+        "[&::-webkit-scrollbar-thumb]:bg-white/10",
       )}
       aria-label="Augments used in this board step"
     >
@@ -220,10 +216,7 @@ export function ReadOnlyAugmentRow({ slots }: { slots: AugmentSlots }) {
             title={augment.name}
           >
             <div
-              className={cn(
-                "w-12 h-12 rounded-md overflow-hidden ring-2",
-                TIER_RING[augment.tier]
-              )}
+              className={cn("w-12 h-12 rounded-md overflow-hidden ring-2", TIER_RING[augment.tier])}
             >
               <AugmentSlotIcon augment={augment} />
             </div>
@@ -267,4 +260,3 @@ function AugmentSlotsPanelImpl({ slots, isDraggingAugment }: Props) {
 }
 
 export const AugmentSlotsPanel = memo(AugmentSlotsPanelImpl);
-

@@ -100,17 +100,11 @@ const STYLE_TO_TIER: Record<number, TraitBreakpoint["tier"]> = {
   8: "prismatic",
 };
 
-const POSITIONAL_TIERS: TraitBreakpoint["tier"][] = [
-  "bronze",
-  "silver",
-  "gold",
-  "prismatic",
-];
+const POSITIONAL_TIERS: TraitBreakpoint["tier"][] = ["bronze", "silver", "gold", "prismatic"];
 
 function styleToTier(style: number, fallbackIndex: number): TraitBreakpoint["tier"] {
   return (
-    STYLE_TO_TIER[style] ??
-    POSITIONAL_TIERS[Math.min(fallbackIndex, POSITIONAL_TIERS.length - 1)]
+    STYLE_TO_TIER[style] ?? POSITIONAL_TIERS[Math.min(fallbackIndex, POSITIONAL_TIERS.length - 1)]
   );
 }
 
@@ -123,7 +117,12 @@ function normalizeBreakpoints(effects: RawTraitEffect[]): TraitBreakpoint[] {
     };
     // Include maxUnits only when CDragon supplies a meaningful upper bound.
     // Sentinel values (0 or ≥9999) indicate "no cap" and are omitted.
-    if (e.maxUnits !== undefined && e.maxUnits !== null && e.maxUnits > e.minUnits && e.maxUnits < 9999) {
+    if (
+      e.maxUnits !== undefined &&
+      e.maxUnits !== null &&
+      e.maxUnits > e.minUnits &&
+      e.maxUnits < 9999
+    ) {
       bp.maxUnits = e.maxUnits;
     }
     return bp;
@@ -152,34 +151,34 @@ const ITEM_API_BLOCKLIST = [
   "_placeholder",
   "tutorial",
   "debug",
-  "augment",                  // augments are a separate system
-  "_chroma",                  // cosmetic chroma variants, not real items
-  "_tactician",               // tactician items (cosmetic)
-  "_consumable",              // consumables like Neeko's Help
-  "vfx",                      // visual effect assets
-  "_buff_",                   // in-game buff icons, not equippable items
-  "_perk",                    // perk icons
-  "_passive",                 // passive ability icons
-  "_tooltip",                 // tooltip sprites
-  "_temp",                    // temporary internal items
-  "heroaugment",              // old TFT9 hero augment remnants
-  "_icon_",                   // UI icon assets
-  "training_",                // training mode dummies
+  "augment", // augments are a separate system
+  "_chroma", // cosmetic chroma variants, not real items
+  "_tactician", // tactician items (cosmetic)
+  "_consumable", // consumables like Neeko's Help
+  "vfx", // visual effect assets
+  "_buff_", // in-game buff icons, not equippable items
+  "_perk", // perk icons
+  "_passive", // passive ability icons
+  "_tooltip", // tooltip sprites
+  "_temp", // temporary internal items
+  "heroaugment", // old TFT9 hero augment remnants
+  "_icon_", // UI icon assets
+  "training_", // training mode dummies
   // Mode / UI / cosmetic blocklist:
-  "modeicon",                 // game-mode selector icons
-  "_mode_",                   // generic mode markers
-  "replicator",               // Replicator Mode icon
-  "conduitmode",              // Conduit Mode icon
-  "challengermode",           // Challenger Mode icon
-  "missfortuneunique",        // Set 17 MissFortune mode stance markers (Replicator / Conduit / Challenger Mode)
-  "traitstance",              // stance toggles for traits — not real items
-  "_orb",                     // orbs (loot orbs, Ornn orb mechanic)
-  "anvil",                    // Ornn / item anvils
-  "crown",                    // Tactician's / Strategist's Crown (cosmetic / special)
-  "_slot",                    // internal RadiantSlot etc.
-  "marketoffering",           // Set 17 market UI offerings (anvils / random rolls)
-  "_assist_",                 // assist mode helper drops
-  "spatula",                  // raw spatulas + spatula-extended legacy items
+  "modeicon", // game-mode selector icons
+  "_mode_", // generic mode markers
+  "replicator", // Replicator Mode icon
+  "conduitmode", // Conduit Mode icon
+  "challengermode", // Challenger Mode icon
+  "missfortuneunique", // Set 17 MissFortune mode stance markers (Replicator / Conduit / Challenger Mode)
+  "traitstance", // stance toggles for traits — not real items
+  "_orb", // orbs (loot orbs, Ornn orb mechanic)
+  "anvil", // Ornn / item anvils
+  "crown", // Tactician's / Strategist's Crown (cosmetic / special)
+  "_slot", // internal RadiantSlot etc.
+  "marketoffering", // Set 17 market UI offerings (anvils / random rolls)
+  "_assist_", // assist mode helper drops
+  "spatula", // raw spatulas + spatula-extended legacy items
 ];
 
 /**
@@ -244,8 +243,8 @@ const RADIANT_SUFFIX_RE = /_Radiant$/i;
 // by exact apiName so the rule survives display-name changes.
 const BLOCKED_ARTIFACT_APINAMES = new Set<string>([
   "TFT17_Item_Artifact_ZekesHeraldShadow", // "Zeke's Bleak Herald"
-  "TFT_Item_Artifact_WitheringRelic",      // "Withered Relic"
-  "TFT_Item_Artifact_CursedBlade",         // "Cursed Blade"
+  "TFT_Item_Artifact_WitheringRelic", // "Withered Relic"
+  "TFT_Item_Artifact_CursedBlade", // "Cursed Blade"
 ]);
 
 // Current-set trait-item families: PsyOps and Anima Squad. We only accept
@@ -280,9 +279,9 @@ const COMPONENT_STAT_CLASS: Record<string, StatClass> = {
 // Apinames whose role isn't well-described by their composition (auras,
 // utility effects, etc.). Keep this small and well-motivated.
 const ITEM_ROLE_OVERRIDES: Record<string, ItemRole> = {
-  TFT_Item_ZekesHerald: "support",  // mana-aura support item
-  TFT_Item_BlueBuff: "ap",          // 2 tears but used by casters, not supports
-  TFT_Item_ArchangelsStaff: "ap",   // tear + rod — caster scaling
+  TFT_Item_ZekesHerald: "support", // mana-aura support item
+  TFT_Item_BlueBuff: "ap", // 2 tears but used by casters, not supports
+  TFT_Item_ArchangelsStaff: "ap", // tear + rod — caster scaling
   TFT_Item_ShojinsSpear: "fighter", // tear + bf — AD caster fighter
   TFT_Item_SpearOfShojin: "fighter",
 };
@@ -366,10 +365,7 @@ function categorizeItem(item: RawItem): TFTItemCategory | null {
   }
 
   // 6. Normal — universal completed item (recipe of 2 components)
-  if (
-    UNIVERSAL_ITEM_RE.test(api) &&
-    (item.composition?.length ?? 0) >= 2
-  ) {
+  if (UNIVERSAL_ITEM_RE.test(api) && (item.composition?.length ?? 0) >= 2) {
     return "normal";
   }
 
@@ -432,28 +428,28 @@ const AUGMENT_CURRENT_SET_RE = new RegExp(`^TFT${CURRENT_SET}_Augment_`, "i");
 
 // apiName patterns that mark an augment as out of scope for the standard pool.
 const AUGMENT_APINAME_BLOCKLIST: RegExp[] = [
-  /HeroAugment/i,            // Set 9 hero-augment remnants
+  /HeroAugment/i, // Set 9 hero-augment remnants
   /Hero_Augment/i,
-  /GodAugment/i,             // Set 17 God Augments (ascension rewards, not slot picks)
-  /_PAIRS$/i,                // Double Up pair suffix
-  /DoubleUpAugment/i,        // Double Up exclusive
-  /TeamupAugment/i,          // team-up encounter only
-  /MarketOffering/i,         // Set 17 market UI rolls
-  /Tutorial/i,               // tutorial augments
-  /TFTEvent/i,               // event-only augments
+  /GodAugment/i, // Set 17 God Augments (ascension rewards, not slot picks)
+  /_PAIRS$/i, // Double Up pair suffix
+  /DoubleUpAugment/i, // Double Up exclusive
+  /TeamupAugment/i, // team-up encounter only
+  /MarketOffering/i, // Set 17 market UI rolls
+  /Tutorial/i, // tutorial augments
+  /TFTEvent/i, // event-only augments
   /_Debug/i,
   /_Test/i,
   /_Placeholder/i,
-  /_PVE/i,                   // PVE encounter exclusive
-  /_Encounter/i,             // encounter-only augments
-  /Changeling_Glamour/i,     // Set 15 changeling glamour leftovers
-  /_SmallQuest$/i,           // quest progression markers
+  /_PVE/i, // PVE encounter exclusive
+  /_Encounter/i, // encounter-only augments
+  /Changeling_Glamour/i, // Set 15 changeling glamour leftovers
+  /_SmallQuest$/i, // quest progression markers
   /_MediumQuest$/i,
   /_LargeQuest$/i,
-  /_SkipOption$/i,           // UI skip placeholders
+  /_SkipOption$/i, // UI skip placeholders
   /_DummyPower$/i,
-  /_PIckEms$/i,              // CDragon-side typo for an internal marker
-  /_Set\d+$/i,               // legacy "_Set7", "_Set12" suffixed reroll leftovers
+  /_PIckEms$/i, // CDragon-side typo for an internal marker
+  /_Set\d+$/i, // legacy "_Set7", "_Set12" suffixed reroll leftovers
 ];
 
 const AUGMENT_ICON_BLOCKLIST: RegExp[] = [
@@ -544,13 +540,28 @@ function pickAugmentIconPath(raw: RawItem): string {
  *   7. Final fallback: silver (logged so we can audit unknowns)
  */
 function detectAugmentTier(iconPath: string, apiName: string): TFTAugmentTier {
-  if (/_III[._]/.test(iconPath) || /-III\.tex$/i.test(iconPath) || /Missing-T3/i.test(iconPath) || /Tier3/i.test(iconPath)) {
+  if (
+    /_III[._]/.test(iconPath) ||
+    /-III\.tex$/i.test(iconPath) ||
+    /Missing-T3/i.test(iconPath) ||
+    /Tier3/i.test(iconPath)
+  ) {
     return "prismatic";
   }
-  if (/_II[._]/.test(iconPath) || /-II\.tex$/i.test(iconPath) || /Missing-T2/i.test(iconPath) || /Tier2/i.test(iconPath)) {
+  if (
+    /_II[._]/.test(iconPath) ||
+    /-II\.tex$/i.test(iconPath) ||
+    /Missing-T2/i.test(iconPath) ||
+    /Tier2/i.test(iconPath)
+  ) {
     return "gold";
   }
-  if (/_I[._]/.test(iconPath) || /-I\.tex$/i.test(iconPath) || /Missing-T1/i.test(iconPath) || /Tier1/i.test(iconPath)) {
+  if (
+    /_I[._]/.test(iconPath) ||
+    /-I\.tex$/i.test(iconPath) ||
+    /Missing-T1/i.test(iconPath) ||
+    /Tier1/i.test(iconPath)
+  ) {
     return "silver";
   }
 
@@ -647,9 +658,7 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
 
   if (!set17) {
     const available = sets.map((s) => s.number).join(", ");
-    console.warn(
-      `[TFT] Set ${CURRENT_SET} not found in setData. Available sets: ${available}`
-    );
+    console.warn(`[TFT] Set ${CURRENT_SET} not found in setData. Available sets: ${available}`);
   }
 
   const rawChampions = set17?.champions ?? [];
@@ -705,17 +714,14 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
   const withPlanner = champions.filter((c) => typeof c.plannerId === "number").length;
   console.info(
     `[TFT] Set ${CURRENT_SET}: ${champions.length} champions loaded, ${skipped} skipped, ` +
-    `planner-code coverage ${withPlanner}/${champions.length}`
+      `planner-code coverage ${withPlanner}/${champions.length}`,
   );
 
   // Build a set of trait apiNames that have a corresponding emblem item.
   // Emblem items carry an `associatedTraits` array pointing to trait apiNames.
   const emblemTraitNames = new Set<string>();
   for (const item of raw.items ?? []) {
-    if (
-      item.isEmblem ||
-      item.apiName.toLowerCase().includes("emblem")
-    ) {
+    if (item.isEmblem || item.apiName.toLowerCase().includes("emblem")) {
       for (const traitApiName of item.associatedTraits ?? []) {
         emblemTraitNames.add(traitApiName);
       }
@@ -779,9 +785,7 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
       iconUrl,
       category,
       composition,
-      ...(category === "normal"
-        ? { role: inferItemRole(i.apiName, composition) }
-        : {}),
+      ...(category === "normal" ? { role: inferItemRole(i.apiName, composition) } : {}),
       ...(category === "emblem" && (i.associatedTraits?.length ?? 0) > 0
         ? { associatedTrait: i.associatedTraits![0] }
         : {}),
@@ -789,18 +793,23 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
   }
 
   const categoryCounts = items.reduce(
-    (acc, i) => { acc[i.category] = (acc[i.category] ?? 0) + 1; return acc; },
-    {} as Record<string, number>
+    (acc, i) => {
+      acc[i.category] = (acc[i.category] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
   );
 
   console.info(
     `[TFT] Items: ${items.length} kept / ${totalRaw} raw ` +
-    `(${filteredOut} filtered, ${duplicates} duplicate apiNames, ${uncategorized} uncategorized, ` +
-    `${radiantsRemoved} radiants removed, ${blockedArtifactsRemoved} artifacts blacklisted)`
+      `(${filteredOut} filtered, ${duplicates} duplicate apiNames, ${uncategorized} uncategorized, ` +
+      `${radiantsRemoved} radiants removed, ${blockedArtifactsRemoved} artifacts blacklisted)`,
   );
   console.info(
     `[TFT] Item categories: ` +
-    Object.entries(categoryCounts).map(([k, v]) => `${k}=${v}`).join(", ")
+      Object.entries(categoryCounts)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", "),
   );
 
   // -------------------------------------------------------------------------
@@ -869,22 +878,27 @@ export function normalizeSetData(raw: RawTFTData, opts: NormalizeOptions = {}): 
   });
 
   const augmentTierCounts = augments.reduce(
-    (acc, a) => { acc[a.tier] = (acc[a.tier] ?? 0) + 1; return acc; },
-    {} as Record<TFTAugmentTier, number>
+    (acc, a) => {
+      acc[a.tier] = (acc[a.tier] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<TFTAugmentTier, number>,
   );
 
   const ddragonAttached = augments.filter((a) => !!a.iconAlt).length;
   console.info(
     `[TFT] Augments: ${augments.length} kept / ${augmentCandidates} candidates ` +
-    `(blocked=${augmentSkippedBlocked}, oldSet=${augmentSkippedOldSet}, ` +
-    `missingIcon=${augmentSkippedMissingIcon}, blockedIcon=${augmentSkippedBlockedIcon}, ` +
-    `duplicates=${augmentDuplicates}, ddragonFallbackAttached=${ddragonAttached}). ` +
-    `Augments whose every icon URL 404s at render time will fall back to a ` +
-    `tier-tinted name placeholder, NOT be dropped.`
+      `(blocked=${augmentSkippedBlocked}, oldSet=${augmentSkippedOldSet}, ` +
+      `missingIcon=${augmentSkippedMissingIcon}, blockedIcon=${augmentSkippedBlockedIcon}, ` +
+      `duplicates=${augmentDuplicates}, ddragonFallbackAttached=${ddragonAttached}). ` +
+      `Augments whose every icon URL 404s at render time will fall back to a ` +
+      `tier-tinted name placeholder, NOT be dropped.`,
   );
   console.info(
     `[TFT] Augment tiers: ` +
-    Object.entries(augmentTierCounts).map(([k, v]) => `${k}=${v}`).join(", ")
+      Object.entries(augmentTierCounts)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", "),
   );
 
   return {

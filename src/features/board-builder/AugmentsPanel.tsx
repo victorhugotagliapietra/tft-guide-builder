@@ -16,17 +16,27 @@ import { cn } from "@/lib/utils";
 const TIER_ORDER: TFTAugmentTier[] = ["silver", "gold", "prismatic"];
 
 const TIER_TILE: Record<TFTAugmentTier, string> = {
-  silver:    "ring-slate-400/50 hover:ring-slate-200/65",
-  gold:      "ring-yellow-500/60 hover:ring-yellow-300/75 shadow-[0_0_5px_-3px_rgba(250,204,21,0.5)]",
-  prismatic: "ring-fuchsia-400/60 hover:ring-fuchsia-300/80 shadow-[0_0_6px_-3px_rgba(232,121,249,0.55)]",
+  silver: "ring-slate-400/50 hover:ring-slate-200/65",
+  gold: "ring-yellow-500/60 hover:ring-yellow-300/75 shadow-[0_0_5px_-3px_rgba(250,204,21,0.5)]",
+  prismatic:
+    "ring-fuchsia-400/60 hover:ring-fuchsia-300/80 shadow-[0_0_6px_-3px_rgba(232,121,249,0.55)]",
 };
 
 // Background fill + accent for the name placeholder when icon URLs all fail.
 // Per-tier so the placeholder still reads as silver/gold/prismatic without an icon.
 const TIER_PLACEHOLDER: Record<TFTAugmentTier, { bg: string; accent: string }> = {
-  silver:    { bg: "bg-gradient-to-br from-slate-700/80 to-slate-800/80", accent: "text-slate-200/70" },
-  gold:      { bg: "bg-gradient-to-br from-yellow-900/75 to-amber-950/85", accent: "text-yellow-300/70" },
-  prismatic: { bg: "bg-gradient-to-br from-fuchsia-900/75 via-violet-900/75 to-cyan-900/75", accent: "text-fuchsia-200/70" },
+  silver: {
+    bg: "bg-gradient-to-br from-slate-700/80 to-slate-800/80",
+    accent: "text-slate-200/70",
+  },
+  gold: {
+    bg: "bg-gradient-to-br from-yellow-900/75 to-amber-950/85",
+    accent: "text-yellow-300/70",
+  },
+  prismatic: {
+    bg: "bg-gradient-to-br from-fuchsia-900/75 via-violet-900/75 to-cyan-900/75",
+    accent: "text-fuchsia-200/70",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -192,20 +202,14 @@ const iconResolutionCache = new Map<string, IconResolution>();
 // The augment is still draggable / assignable; only the visual differs.
 // ---------------------------------------------------------------------------
 
-function NamePlaceholder({
-  augment,
-  className,
-}: {
-  augment: TFTAugment;
-  className?: string;
-}) {
+function NamePlaceholder({ augment, className }: { augment: TFTAugment; className?: string }) {
   const cfg = TIER_PLACEHOLDER[augment.tier];
   return (
     <div
       className={cn(
         "relative flex flex-col items-center justify-center text-center px-0.5 select-none",
         cfg.bg,
-        className
+        className,
       )}
       title={augment.name}
     >
@@ -233,13 +237,7 @@ function NamePlaceholder({
 // possibility of an infinite retry loop driven by changing prop identity.
 // ---------------------------------------------------------------------------
 
-export function AugmentIcon({
-  augment,
-  className,
-}: {
-  augment: TFTAugment;
-  className?: string;
-}) {
+export function AugmentIcon({ augment, className }: { augment: TFTAugment; className?: string }) {
   const candidates = useMemo(() => buildAugmentIconCandidates(augment), [augment]);
   const [attemptIdx, setAttemptIdx] = useState(0);
 
@@ -254,8 +252,8 @@ export function AugmentIcon({
     iconResolutionCache.set(augment.apiName, { ok: false, attempted: candidates });
     console.warn(
       `[TFT augment] icon unresolved — name="${augment.name}" ` +
-      `apiName=${augment.apiName} tier=${augment.tier} ` +
-      `attempted=[${candidates.join(" | ")}]`
+        `apiName=${augment.apiName} tier=${augment.tier} ` +
+        `attempted=[${candidates.join(" | ")}]`,
     );
   }, [augment.apiName, augment.name, augment.tier, attemptIdx, candidates]);
 
@@ -329,7 +327,7 @@ export function DraggableAugmentTile({ augment }: { augment: TFTAugment }) {
       className={cn(
         "w-10 h-10 rounded-md overflow-hidden ring-1 cursor-grab active:cursor-grabbing select-none transition-[box-shadow,filter] duration-150 hover:brightness-110",
         TIER_TILE[augment.tier],
-        isDragging && "opacity-40"
+        isDragging && "opacity-40",
       )}
     >
       <AugmentIcon augment={augment} className="w-full h-full" />
@@ -346,7 +344,7 @@ export function AugmentDragOverlay({ augment }: { augment: TFTAugment }) {
     <div
       className={cn(
         "w-10 h-10 rounded-md overflow-hidden ring-2 shadow-2xl select-none pointer-events-none",
-        TIER_TILE[augment.tier]
+        TIER_TILE[augment.tier],
       )}
     >
       <AugmentIcon augment={augment} className="w-full h-full" />
@@ -427,7 +425,7 @@ function AugmentsPanelImpl() {
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:rounded-full",
           "[&::-webkit-scrollbar-thumb]:bg-white/10",
-          "hover:[&::-webkit-scrollbar-thumb]:bg-white/25"
+          "hover:[&::-webkit-scrollbar-thumb]:bg-white/25",
         )}
         style={{
           maxHeight: 420,
@@ -448,4 +446,3 @@ function AugmentsPanelImpl() {
 }
 
 export const AugmentsPanel = memo(AugmentsPanelImpl);
-
