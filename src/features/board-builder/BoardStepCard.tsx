@@ -236,15 +236,23 @@ const DraggableChampionTile = memo(function DraggableChampionTile({
       title={champion.name}
       onClick={() => onClick(champion.apiName)}
       className={cn(
-        "group flex flex-col items-center gap-1 cursor-pointer select-none transition-all duration-100",
+        // transition-opacity (not transition-all) — only the opacity-40
+        // dragging swap needs to animate. transition-all would watch ALL
+        // property changes per tile, multiplied by 60+ tiles = constant
+        // style-recalc work even when nothing visual is happening.
+        "group flex flex-col items-center gap-1 cursor-pointer select-none transition-opacity duration-100",
         isDragging && "opacity-40",
       )}
     >
       <div
         className={cn(
-          "w-11 h-11 rounded-lg overflow-hidden transition-all duration-150",
+          // No scale on hover — transform animations promote each tile to its
+          // own composite layer, which combined with 60+ tiles and the cost
+          // shadow halo on 5-cost champions tanked drag/scroll fps. Brightness
+          // alone is enough hover affordance and stays on the paint layer.
+          "w-11 h-11 rounded-lg overflow-hidden transition-[filter] duration-150",
           COST_RING[champion.cost] ?? COST_RING[1],
-          "group-hover:scale-110 group-hover:brightness-110",
+          "group-hover:brightness-110",
         )}
       >
         <ChampionImg champion={champion} className="w-full h-full" />
@@ -267,8 +275,15 @@ const DraggableChampionTile = memo(function DraggableChampionTile({
 // ---------------------------------------------------------------------------
 
 function DragOverlayContent({ champion }: { champion: TFTChampion }) {
+  // willChange: "transform" hints the browser to promote the overlay to its
+  // own compositor layer up-front. dnd-kit animates the overlay with a CSS
+  // transform on every pointer move; without the hint, the browser sometimes
+  // re-paints the overlay's pixels each frame (visible as drag stutter).
   return (
-    <div className="flex flex-col items-center gap-1 select-none pointer-events-none">
+    <div
+      className="flex flex-col items-center gap-1 select-none pointer-events-none"
+      style={{ willChange: "transform" }}
+    >
       <div
         className={cn(
           "w-11 h-11 rounded-lg overflow-hidden shadow-2xl",
@@ -468,7 +483,7 @@ const PoolPanel = memo(function PoolPanel({
               type="button"
               onClick={() => onTabChange(tab)}
               className={cn(
-                "px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase rounded transition-all",
+                "px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase rounded transition-colors",
                 activeTab === tab
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground/70",
@@ -629,10 +644,18 @@ const StepTypeField = memo(function StepTypeField({
   );
 });
 
-// Notes editor wrapper — RichTextEditor already debounces internally, so the
-// only job here is to render with the initial value once and let the editor
-// own its content. Memoizing this isolates the (heavy) TipTap re-renders from
-// the rest of the step card.
+// Notes editor wrapper.
+//
+// TipTap's `useEditor` is one of the most expensive things in the editor — it
+// instantiates ProseMirror state, plugins, schemas, etc. (~5-15ms per editor
+// on a modern laptop, more on slower machines). Multiplied by every expanded
+// step card, that mount cost is the single biggest contributor to the "click
+// Add step → page jank" the user reported.
+//
+// Mitigation: render a cheap read-only preview by default. The full TipTap
+// editor only mounts when the user actually clicks into the notes field. The
+// preview is the same HTML the editor would produce, so visually nothing
+// changes — only the JS work is deferred until needed.
 const StepNotesField = memo(function StepNotesField({
   initialDescription,
   onCommit,
@@ -642,6 +665,35 @@ const StepNotesField = memo(function StepNotesField({
 }) {
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
+
+  const [editing, setEditing] = useState(false);
+
+  if (!editing) {
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Notes</Label>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          // Visually mirrors the editor frame so click feels like focusing
+          // the field, not opening a dialog. Cursor=text + min-height keep
+          // the affordance obvious.
+          className="w-full min-h-[64px] rounded-md border border-input bg-background/60 text-left text-sm py-2 px-3 cursor-text hover:bg-background/80 transition-colors"
+        >
+          {initialDescription ? (
+            <div
+              className="[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+              dangerouslySetInnerHTML={{ __html: initialDescription }}
+            />
+          ) : (
+            <span className="text-muted-foreground/50">
+              When to roll, when to level, who holds items…
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1.5">
@@ -684,6 +736,33 @@ function BoardStepCardImpl({
 
   const [selectedPos, setSelectedPos] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  // Deferred mount of the heavy lower panels (PoolPanel — 60+ draggable
+  // champion tiles, and ItemsPanel — 50+ draggable item tiles). When the
+  // step first expands we paint the board immediately, then schedule the
+  // pool/items mount for the next idle slot. The user sees the board
+  // appear instantly; the pool fills in ~1 frame later, which feels much
+  // snappier than the previous "freeze for 200ms then everything pops in".
+  //
+  // Why two ticks of rAF: one rAF schedules for the next paint; the second
+  // rAF guarantees the browser has actually committed that paint before we
+  // do any more work. This is the standard pattern for "after first paint".
+  const [poolReady, setPoolReady] = useState(false);
+  useEffect(() => {
+    if (!isExpanded) {
+      setPoolReady(false);
+      return;
+    }
+    let r1 = 0;
+    let r2 = 0;
+    r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setPoolReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
+  }, [isExpanded]);
 
   const boardContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1040,8 +1119,13 @@ function BoardStepCardImpl({
     .map((u) => championMap.get(u.championKey)?.name ?? u.championKey)
     .join(", ");
 
+  // NOTE: `backdrop-blur-sm` was removed from the root card deliberately —
+  // `backdrop-filter` forces the browser to recomposite every pixel BEHIND
+  // this element on each frame of scroll/drag. With multiple board step cards
+  // on the page that made scroll noticeably janky. A slightly more opaque
+  // bg-card recovers the visual separation without the GPU cost.
   return (
-    <div className="border border-border/60 rounded-xl overflow-hidden bg-card/50 backdrop-blur-sm">
+    <div className="border border-border/60 rounded-xl overflow-hidden bg-card/80">
       {/* Header */}
       <div
         className={cn(
@@ -1110,9 +1194,13 @@ function BoardStepCardImpl({
         </div>
       </div>
 
-      {/* Expanded editor */}
+      {/* Expanded editor. `contain: content` (layout+style+paint isolation)
+          tells the browser that nothing inside this subtree affects the
+          ancestor's layout/style/paint, so style recalcs while dragging or
+          typing are scoped to this card. Without it a hover/drag inside one
+          step can trigger style recalc work outside the card. */}
       {isExpanded && (
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4" style={{ contain: "content" }}>
           {/* Metadata — each input owns its own draft state so a keystroke
               never re-renders the heavy board/pool/items subtree below. */}
           <div className="grid sm:grid-cols-3 gap-3">
@@ -1167,17 +1255,36 @@ function BoardStepCardImpl({
             <div
               ref={setTrashRef}
               className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 pt-1 border-t border-border/40"
+              // Reserve approximate space for the deferred pool/items so the
+              // page doesn't grow once they mount — keeps scroll position
+              // stable when the deferred mount completes.
+              style={poolReady ? undefined : { minHeight: 340 }}
             >
-              <PoolPanel
-                activeTab={poolTab}
-                onTabChange={setPoolTab}
-                onChampionClick={placeChampionAtFirstEmpty}
-                isRemoveTarget={isDraggingFromBoard || isDraggingFromSlot}
-                isOver={isTrashOver}
-              />
-              <div className="rounded-xl p-3 border border-white/5 bg-background/30">
-                <ItemsPanel />
-              </div>
+              {poolReady ? (
+                <>
+                  <PoolPanel
+                    activeTab={poolTab}
+                    onTabChange={setPoolTab}
+                    onChampionClick={placeChampionAtFirstEmpty}
+                    isRemoveTarget={isDraggingFromBoard || isDraggingFromSlot}
+                    isOver={isTrashOver}
+                  />
+                  <div className="rounded-xl p-3 border border-white/5 bg-background/30">
+                    <ItemsPanel />
+                  </div>
+                </>
+              ) : (
+                // Minimal skeleton — same visual frame, zero useDraggable
+                // hooks, zero images requested. Replaced after the next paint.
+                <>
+                  <div className="rounded-xl p-3 border border-white/5 bg-background/30 text-xs text-muted-foreground/40">
+                    Loading champions…
+                  </div>
+                  <div className="rounded-xl p-3 border border-white/5 bg-background/30 text-xs text-muted-foreground/40">
+                    Loading items…
+                  </div>
+                </>
+              )}
             </div>
 
             {typeof document !== "undefined" &&

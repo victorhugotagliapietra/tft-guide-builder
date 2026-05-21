@@ -232,7 +232,7 @@ function ItemsPanelImpl() {
             type="button"
             onClick={() => setActiveTab(tab)}
             className={cn(
-              "flex-1 text-[10px] font-medium py-1 rounded transition-all",
+              "flex-1 text-[10px] font-medium py-1 rounded transition-colors",
               activeTab === tab
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground/70",
