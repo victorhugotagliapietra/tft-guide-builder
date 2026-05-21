@@ -10,6 +10,7 @@ import {
 
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/hooks/use-auth";
+import { TFTDataProvider } from "@/features/tft-data/use-tft-data";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -143,8 +144,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Outlet />
-        <Toaster />
+        <TFTDataProvider>
+          <Outlet />
+          <Toaster />
+        </TFTDataProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

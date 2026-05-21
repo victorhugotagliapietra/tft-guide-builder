@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Star } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
 import {
@@ -6,7 +6,7 @@ import {
   TRAINING_DUMMY_API_NAME,
   TRAINING_DUMMY_LOCAL_ICON,
 } from "@/features/tft-data/use-tft-data";
-import type { TFTChampion } from "@/features/tft-data/types";
+import type { TFTChampion, TFTItem } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +33,7 @@ const COST_HEX_BORDER: Record<number, string> = {
   5: "bg-yellow-400",
 };
 
-function ChampionImg({
+const ChampionImg = memo(function ChampionImg({
   champion,
   className,
 }: {
@@ -94,15 +94,11 @@ function ChampionImg({
       }}
     />
   );
-}
+});
 
-// Item icons anchored INSIDE the bottom of the hex (not below). Kept in sync
-// with BoardGrid's editable version — same sizing + position so guides render
-// identically for the author and the public viewer.
-function ItemIcons({ itemKeys }: { itemKeys: string[] }) {
-  const { items } = useTFTData();
-  const itemMap = new Map(items.map((i) => [i.apiName, i]));
-
+// itemMap is taken as a prop so we don't allocate a fresh Map per occupied
+// hex, per render. The parent ReadOnlyBoardGrid resolves it once from context.
+function ItemIcons({ itemKeys, itemMap }: { itemKeys: string[]; itemMap: Map<string, TFTItem> }) {
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-[2px] z-10 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
@@ -128,9 +124,13 @@ type Props = {
   units: BoardUnit[];
 };
 
-export function ReadOnlyBoardGrid({ units }: Props) {
-  const { championMap } = useTFTData();
-  const unitMap = new Map(units.map((u) => [u.position, u]));
+function ReadOnlyBoardGridImpl({ units }: Props) {
+  const { championMap, itemMap } = useTFTData();
+  const unitMap = useMemo(() => {
+    const m = new Map<number, BoardUnit>();
+    for (const u of units) m.set(u.position, u);
+    return m;
+  }, [units]);
 
   return (
     <div className="overflow-x-auto pb-2">
@@ -189,7 +189,7 @@ export function ReadOnlyBoardGrid({ units }: Props) {
                     )}
                     {/* Items inside the bottom of the hex */}
                     {(unit.items?.length ?? 0) > 0 && (
-                      <ItemIcons itemKeys={unit.items} />
+                      <ItemIcons itemKeys={unit.items} itemMap={itemMap} />
                     )}
                   </>
                 ) : (
@@ -213,3 +213,5 @@ export function ReadOnlyBoardGrid({ units }: Props) {
     </div>
   );
 }
+
+export const ReadOnlyBoardGrid = memo(ReadOnlyBoardGridImpl);

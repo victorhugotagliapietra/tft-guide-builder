@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { memo, useState, useMemo, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Search, X } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
@@ -81,7 +81,7 @@ export function DraggableItemTile({ item }: { item: TFTItem }) {
       className={cn(
         "w-10 h-10 rounded-md overflow-hidden ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none transition-[box-shadow,filter,background-color] duration-150 relative",
         "hover:ring-white/40 hover:brightness-110",
-        isDragging && "opacity-40"
+        isDragging && "opacity-40",
       )}
     >
       <ItemImg item={item} className="w-full h-full" />
@@ -105,7 +105,7 @@ export function ItemDragOverlay({ item }: { item: TFTItem }) {
 // ItemsPanel
 // ---------------------------------------------------------------------------
 
-export function ItemsPanel() {
+function ItemsPanelImpl() {
   const { items } = useTFTData();
   const [activeTab, setActiveTab] = useState<TFTItemCategory>("normal");
   const [search, setSearch] = useState("");
@@ -159,7 +159,7 @@ export function ItemsPanel() {
 
     if (droppedDupApi > 0 || droppedDupName > 0) {
       console.info(
-        `[TFT] Items panel dedup: apiName=${droppedDupApi}, normalName=${droppedDupName}`
+        `[TFT] Items panel dedup: apiName=${droppedDupApi}, normalName=${droppedDupName}`,
       );
     }
 
@@ -228,7 +228,7 @@ export function ItemsPanel() {
               "flex-1 text-[10px] font-medium py-1 rounded transition-all",
               activeTab === tab
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground/70"
+                : "text-muted-foreground hover:text-foreground/70",
             )}
           >
             {TAB_LABELS[tab]}
@@ -244,7 +244,7 @@ export function ItemsPanel() {
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:rounded-full",
           "[&::-webkit-scrollbar-thumb]:bg-white/10",
-          "hover:[&::-webkit-scrollbar-thumb]:bg-white/25"
+          "hover:[&::-webkit-scrollbar-thumb]:bg-white/25",
         )}
         style={{ maxHeight: "340px" }}
       >
@@ -260,3 +260,5 @@ export function ItemsPanel() {
     </div>
   );
 }
+
+export const ItemsPanel = memo(ItemsPanelImpl);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { Plus, LayoutList } from "lucide-react";
 import type { BoardStep } from "./types";
 import { BoardStepCard } from "./BoardStepCard";
@@ -12,6 +12,39 @@ type Props = {
   onDuplicate: (id: string) => void;
 };
 
+// Lightweight wrapper for each row — its only job is to bind the parent's
+// toggle/remove handlers to a specific step id BEFORE passing them down to
+// the memoized BoardStepCard, so each card receives stable function props.
+// Without this wrapper, building inline closures inline (() => toggle(id))
+// in the parent's .map would defeat BoardStepCard's React.memo for every row
+// whenever ANY row's content changed.
+const BoardStepListItem = memo(function BoardStepListItem({
+  step,
+  isExpanded,
+  onToggleExpand,
+  onRemove,
+  onUpdate,
+  onDuplicate,
+}: {
+  step: BoardStep;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, patch: Partial<BoardStep>) => void;
+  onDuplicate: (id: string) => void;
+}) {
+  return (
+    <BoardStepCard
+      step={step}
+      isExpanded={isExpanded}
+      onToggleExpand={onToggleExpand}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      onDuplicate={onDuplicate}
+    />
+  );
+});
+
 export function BoardStepList({
   steps,
   onAdd,
@@ -21,14 +54,20 @@ export function BoardStepList({
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  function handleAdd() {
+  const handleAdd = useCallback(() => {
     const newId = onAdd();
     setExpandedId(newId);
-  }
+  }, [onAdd]);
 
-  function toggle(id: string) {
-    setExpandedId((prev) => (prev === id ? null : id));
-  }
+  // Wrap remove so we collapse the expanded row when it's the one being deleted.
+  // Stable identity across renders so BoardStepListItem's memo holds.
+  const handleRemove = useCallback(
+    (id: string) => {
+      setExpandedId((prev) => (prev === id ? null : prev));
+      onRemove(id);
+    },
+    [onRemove]
+  );
 
   return (
     <div className="space-y-3">
@@ -47,16 +86,13 @@ export function BoardStepList({
         <>
           <div className="space-y-2">
             {steps.map((step) => (
-              <BoardStepCard
+              <Row
                 key={step.id}
                 step={step}
                 isExpanded={expandedId === step.id}
-                onToggleExpand={() => toggle(step.id)}
+                onExpand={setExpandedId}
+                onRemove={handleRemove}
                 onUpdate={onUpdate}
-                onRemove={(id) => {
-                  if (expandedId === id) setExpandedId(null);
-                  onRemove(id);
-                }}
                 onDuplicate={onDuplicate}
               />
             ))}
@@ -70,3 +106,38 @@ export function BoardStepList({
     </div>
   );
 }
+
+// Each Row owns a stable `onToggleExpand` callback bound to its own step.id
+// so the memoized BoardStepCard inside receives a stable function prop. This
+// is the missing piece that makes BoardStepCard's React.memo actually
+// effective when sibling rows expand/collapse.
+const Row = memo(function Row({
+  step,
+  isExpanded,
+  onExpand,
+  onRemove,
+  onUpdate,
+  onDuplicate,
+}: {
+  step: BoardStep;
+  isExpanded: boolean;
+  onExpand: (id: string | null) => void;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, patch: Partial<BoardStep>) => void;
+  onDuplicate: (id: string) => void;
+}) {
+  const handleToggle = useCallback(() => {
+    onExpand(isExpanded ? null : step.id);
+  }, [isExpanded, onExpand, step.id]);
+
+  return (
+    <BoardStepListItem
+      step={step}
+      isExpanded={isExpanded}
+      onToggleExpand={handleToggle}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      onDuplicate={onDuplicate}
+    />
+  );
+});

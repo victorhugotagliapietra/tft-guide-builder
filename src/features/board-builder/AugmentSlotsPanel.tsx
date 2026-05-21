@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Sparkles } from "lucide-react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
@@ -236,7 +237,7 @@ export function ReadOnlyAugmentRow({ slots }: { slots: AugmentSlots }) {
   );
 }
 
-export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
+function AugmentSlotsPanelImpl({ slots, isDraggingAugment }: Props) {
   // 2-column grid (rows derived from AUGMENT_SLOT_COUNT). Title sits above the
   // grid and is center-aligned across the grid's full width — visually it lands
   // over the seam between the two columns, which reads as "centered above the
@@ -264,3 +265,6 @@ export function AugmentSlotsPanel({ slots, isDraggingAugment }: Props) {
     </div>
   );
 }
+
+export const AugmentSlotsPanel = memo(AugmentSlotsPanelImpl);
+

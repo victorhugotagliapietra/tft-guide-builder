@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { Star, X } from "lucide-react";
 import { BOARD_ROWS, BOARD_COLS, coordsToPosition } from "./grid";
@@ -7,7 +7,7 @@ import {
   TRAINING_DUMMY_API_NAME,
   TRAINING_DUMMY_LOCAL_ICON,
 } from "@/features/tft-data/use-tft-data";
-import type { TFTChampion } from "@/features/tft-data/types";
+import type { TFTChampion, TFTItem } from "@/features/tft-data/types";
 import type { BoardUnit } from "./types";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,13 @@ const COST_HEX_BORDER: Record<number, string> = {
 // Champion image with 2-step fallback
 // ---------------------------------------------------------------------------
 
-function ChampionImg({ champion, className }: { champion: TFTChampion; className?: string }) {
+const ChampionImg = memo(function ChampionImg({
+  champion,
+  className,
+}: {
+  champion: TFTChampion;
+  className?: string;
+}) {
   const [primaryFailed, setPrimaryFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
 
@@ -100,16 +106,14 @@ function ChampionImg({ champion, className }: { champion: TFTChampion; className
       draggable={false}
       onError={() => {
         if (!primaryFailed && src === champion.iconUrl) {
-          console.debug(`[TFT] Primary icon failed for ${champion.name}, trying fallback`);
           setPrimaryFailed(true);
         } else {
-          console.debug(`[TFT] All icons failed for ${champion.name}`);
           setFallbackFailed(true);
         }
       }}
     />
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Star control — anchored to the TOP-INSIDE of the hex. Hover-visible unless
@@ -163,13 +167,7 @@ function StarControl({ starLevel, onSet }: { starLevel: number; onSet: (level: n
 }
 
 // ---------------------------------------------------------------------------
-// Item icons row — anchored to the BOTTOM-INSIDE of the hex. Doubled tile
-// size (16 → 28) so equipped items are legible at a glance. Pushed up to
-// bottom-4 so the wider middle band of the polygon (y=25%–75% of CELL_H is
-// full-width) hosts the row instead of the tapered bottom point; with
-// CELL_H=114, bottom-4 puts items at y≈86 which is just inside the full-
-// width band. Three 28px items + 4px gaps = 88px, comfortably within the
-// 98px CELL_W footprint.
+// Item icons row — anchored to the BOTTOM-INSIDE of the hex.
 // ---------------------------------------------------------------------------
 
 function ItemIconImg({ iconUrl, name }: { iconUrl: string; name: string }) {
@@ -188,16 +186,17 @@ function ItemIconImg({ iconUrl, name }: { iconUrl: string; name: string }) {
   );
 }
 
+// EditableItemIcons takes the item map as a prop (built once at the BoardGrid
+// level) instead of calling useTFTData()+building a new Map per hex per render.
 function EditableItemIcons({
   itemKeys,
+  itemMap,
   onRemove,
 }: {
   itemKeys: string[];
+  itemMap: Map<string, TFTItem>;
   onRemove: (index: number) => void;
 }) {
-  const { items } = useTFTData();
-  const itemMap = new Map(items.map((i) => [i.apiName, i]));
-
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-[2px] z-30 pointer-events-none">
       {itemKeys.slice(0, 3).map((key, i) => {
@@ -216,15 +215,12 @@ function EditableItemIcons({
             className={cn(
               "pointer-events-auto relative w-7 h-7 rounded-sm ring-1 ring-black/60 shadow-[0_1px_3px_rgba(0,0,0,0.6)]",
               "transition-[box-shadow,filter] duration-100",
-              // No scale: stable footprint matches ItemsPanel decision; the
-              // destructive ring + X overlay below signals "click to remove".
               "hover:ring-destructive/80",
               "group/item"
             )}
             aria-label={`Remove ${item?.name ?? key}`}
           >
             <ItemIconImg iconUrl={item?.iconUrl ?? ""} name={item?.name ?? key} />
-            {/* X overlay on hover — sized for the 28×28 tiles. */}
             <span className="absolute inset-0 hidden group-hover/item:flex items-center justify-center bg-black/60 rounded-sm">
               <X className="w-4 h-4 text-white" strokeWidth={3} />
             </span>
@@ -368,10 +364,10 @@ type Props = {
 };
 
 // ---------------------------------------------------------------------------
-// BoardGrid
+// BoardGrid (memoized)
 // ---------------------------------------------------------------------------
 
-export function BoardGrid({
+function BoardGridImpl({
   units,
   selectedPos,
   onHexClick,
@@ -380,8 +376,15 @@ export function BoardGrid({
   isDraggingFromPanel,
   isDraggingItem,
 }: Props) {
-  const { championMap } = useTFTData();
-  const unitMap = new Map(units.map((u) => [u.position, u]));
+  const { championMap, itemMap } = useTFTData();
+
+  // Memoize the position → unit lookup so we don't allocate a fresh Map on
+  // every parent re-render (which happens for every drag tick, hover, etc.).
+  const unitMap = useMemo(() => {
+    const m = new Map<number, BoardUnit>();
+    for (const u of units) m.set(u.position, u);
+    return m;
+  }, [units]);
 
   return (
     <div
@@ -431,6 +434,7 @@ export function BoardGrid({
                   {(unit.items?.length ?? 0) > 0 && (
                     <EditableItemIcons
                       itemKeys={unit.items}
+                      itemMap={itemMap}
                       onRemove={(itemIndex) => onRemoveItem(pos, itemIndex)}
                     />
                   )}
@@ -443,3 +447,5 @@ export function BoardGrid({
     </div>
   );
 }
+
+export const BoardGrid = memo(BoardGridImpl);

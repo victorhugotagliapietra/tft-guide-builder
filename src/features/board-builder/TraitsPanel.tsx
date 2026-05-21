@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { memo, useState, useEffect, useMemo, Fragment } from "react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
 import { computeActiveTraits, type ActiveTrait } from "@/features/tft-data/trait-synergies";
 import type { BoardUnit } from "./types";
@@ -168,7 +168,7 @@ type Props = {
   units: BoardUnit[];
 };
 
-export function TraitsPanel({ units }: Props) {
+function TraitsPanelImpl({ units }: Props) {
   const { championMap, traitMap } = useTFTData();
 
   // Use computeActiveTraits (not getActiveTraitsOnly) to include traits that
@@ -222,3 +222,6 @@ export function TraitsPanel({ units }: Props) {
     </div>
   );
 }
+
+export const TraitsPanel = memo(TraitsPanelImpl);
+

@@ -1,41 +1,45 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { BoardStep } from "./types";
 import { emptyAugmentSlots } from "./types";
 
 export function useBoardSteps() {
   const [steps, setSteps] = useState<BoardStep[]>([]);
 
-  function addStep(): string {
+  // All mutator callbacks are wrapped in useCallback with empty deps so they
+  // keep a stable identity across re-renders. The setter form of setState is
+  // used everywhere so we never need to read `steps` in the closure — which
+  // is what would otherwise force the deps array to include `steps` (and
+  // bust BoardStepList's memo on every keystroke).
+
+  const addStep = useCallback((): string => {
     const newId = crypto.randomUUID();
-    const newStep: BoardStep = {
-      id: newId,
-      title: "New board",
-      level: 6,
-      stepType: "early",
-      description: "",
-      units: [],
-      augments: emptyAugmentSlots(),
-      sortOrder: steps.length,
-    };
-    setSteps((prev) => [...prev, newStep]);
+    setSteps((prev) => {
+      const newStep: BoardStep = {
+        id: newId,
+        title: "New board",
+        level: 6,
+        stepType: "early",
+        description: "",
+        units: [],
+        augments: emptyAugmentSlots(),
+        sortOrder: prev.length,
+      };
+      return [...prev, newStep];
+    });
     return newId;
-  }
+  }, []);
 
-  function updateStep(id: string, patch: Partial<BoardStep>) {
+  const updateStep = useCallback((id: string, patch: Partial<BoardStep>) => {
+    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }, []);
+
+  const removeStep = useCallback((id: string) => {
     setSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+      prev.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i }))
     );
-  }
+  }, []);
 
-  function removeStep(id: string) {
-    setSteps((prev) =>
-      prev
-        .filter((s) => s.id !== id)
-        .map((s, i) => ({ ...s, sortOrder: i }))
-    );
-  }
-
-  function duplicateStep(id: string) {
+  const duplicateStep = useCallback((id: string) => {
     setSteps((prev) => {
       const source = prev.find((s) => s.id === id);
       if (!source) return prev;
@@ -47,9 +51,9 @@ export function useBoardSteps() {
       };
       return [...prev, copy];
     });
-  }
+  }, []);
 
-  function moveStepUp(id: string) {
+  const moveStepUp = useCallback((id: string) => {
     setSteps((prev) => {
       const idx = prev.findIndex((s) => s.id === id);
       if (idx <= 0) return prev;
@@ -57,9 +61,9 @@ export function useBoardSteps() {
       [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
       return next.map((s, i) => ({ ...s, sortOrder: i }));
     });
-  }
+  }, []);
 
-  function moveStepDown(id: string) {
+  const moveStepDown = useCallback((id: string) => {
     setSteps((prev) => {
       const idx = prev.findIndex((s) => s.id === id);
       if (idx >= prev.length - 1) return prev;
@@ -67,7 +71,7 @@ export function useBoardSteps() {
       [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
       return next.map((s, i) => ({ ...s, sortOrder: i }));
     });
-  }
+  }, []);
 
   return {
     steps,

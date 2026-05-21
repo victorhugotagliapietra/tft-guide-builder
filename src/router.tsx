@@ -9,7 +9,9 @@ export const getRouter = () => {
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    defaultPreloadStaleTime: 0,
+    // Preload hover/intent results stay fresh for 30s — avoids refetching the
+    // same Supabase rows when the user oscillates over the same link.
+    defaultPreloadStaleTime: 30_000,
   });
 
   return router;

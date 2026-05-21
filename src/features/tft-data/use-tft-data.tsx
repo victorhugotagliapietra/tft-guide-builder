@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TFT_DATA_URL } from "./cdn";
 import { normalizeSetData, type RawTFTData } from "./normalize";
-import type { TFTSetData, TFTChampion, TFTTrait, TFTAugment } from "./types";
+import type { TFTSetData, TFTChampion, TFTTrait, TFTAugment, TFTItem } from "./types";
 import { MOCK_CHAMPIONS } from "./mock-champions";
 
 // CDragon's team-planner manifest. The TFT in-game team-planner code uses
@@ -145,14 +145,43 @@ async function fetchTFTData(): Promise<TFTSetData> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Context-backed shape of all the maps/lists every consumer needs.
+//
+// Building these maps is cheap individually but happens dozens of times per
+// render across the editor (every BoardStepCard, every AugmentSlot, every
+// TraitsPanel etc. used to call useTFTData() and recompute its own copy).
+// Centralizing it in a single Provider means each Map is built ONCE per data
+// load — children just read it via context.
+// ---------------------------------------------------------------------------
+
+export type TFTDataContextValue = {
+  champions: TFTChampion[];
+  championMap: Map<string, TFTChampion>;
+  items: TFTItem[];
+  itemMap: Map<string, TFTItem>;
+  traits: TFTTrait[];
+  traitMap: Map<string, TFTTrait>;
+  augments: TFTAugment[];
+  augmentMap: Map<string, TFTAugment>;
+  augmentsByTier: { silver: TFTAugment[]; gold: TFTAugment[]; prismatic: TFTAugment[] };
+  plannerCodeMap: Map<string, number>;
+  setNumber: number;
+  setName: string;
+  isUsingMockData: boolean;
+  isLoading: boolean;
+  isError: boolean;
+};
+
+const TFTDataContext = createContext<TFTDataContextValue | null>(null);
+
 /**
- * Fetches and normalizes TFT Set 17 data from CommunityDragon.
- *
- * - champions: Set 17 playable roster (cost 1–5) + Training Dummy appended last
- * - championMap: O(1) lookup by apiName
- * - Falls back to MOCK_CHAMPIONS when data is loading or errored
+ * Provider that fetches CDragon/DDragon data once and exposes pre-computed
+ * Maps via context. Mount this once near the root of the tree (see
+ * routes/__root.tsx). All child components MUST use `useTFTData()` to read —
+ * no component should call useQuery(['tft-data']) directly.
  */
-export function useTFTData() {
+export function TFTDataProvider({ children }: { children: ReactNode }) {
   const query = useQuery<TFTSetData>({
     queryKey: ["tft-data"],
     queryFn: fetchTFTData,
@@ -165,17 +194,12 @@ export function useTFTData() {
 
   // Combine real roster with synthetic dummy units, deduped by apiName.
   // Dedup defends against any future path where a dummy might end up in
-  // baseChampions (CDragon staging entries, mock overlap, etc.) — without
-  // this guard, a single source change could produce duplicate dummies that
-  // re-appear every time the search input is cleared.
+  // baseChampions (CDragon staging entries, mock overlap, etc.).
   const champions: TFTChampion[] = useMemo(() => {
     const seen = new Set<string>();
     const out: TFTChampion[] = [];
     for (const c of [...baseChampions, ...DUMMY_UNITS]) {
-      if (seen.has(c.apiName)) {
-        console.debug(`[TFT] Skipping duplicate champion apiName: ${c.apiName}`);
-        continue;
-      }
+      if (seen.has(c.apiName)) continue;
       seen.add(c.apiName);
       out.push(c);
     }
@@ -187,11 +211,6 @@ export function useTFTData() {
     [champions]
   );
 
-  // Champion-apiName → team-planner byte code map. Built from the runtime
-  // team-planner fetch (attached as `plannerId` on each champion during
-  // normalization). Used by planner-code.ts to emit valid Riot codes; empty
-  // map means the export will report an explicit error rather than emit a
-  // broken code.
   const plannerCodeMap = useMemo(() => {
     const out = new Map<string, number>();
     for (const c of champions) {
@@ -201,42 +220,76 @@ export function useTFTData() {
   }, [champions]);
 
   const traits: TFTTrait[] = query.data?.traits ?? [];
-
   const traitMap = useMemo(
     () => new Map(traits.map((t) => [t.apiName, t])),
     [traits]
   );
 
-  const augments: TFTAugment[] = query.data?.augments ?? [];
+  const items: TFTItem[] = query.data?.items ?? [];
+  const itemMap = useMemo(
+    () => new Map(items.map((i) => [i.apiName, i])),
+    [items]
+  );
 
-  // O(1) lookup by apiName — the augment system identifies entries by apiName,
-  // not by display name, so all UI/dnd-kit code keys off this.
+  const augments: TFTAugment[] = query.data?.augments ?? [];
   const augmentMap = useMemo(
     () => new Map(augments.map((a) => [a.apiName, a])),
     [augments]
   );
 
-  // Pre-bucketed by tier — TraitsPanel / AugmentsPanel will render these in
-  // three columns without recomputing every render.
   const augmentsByTier = useMemo(() => {
     const out = { silver: [] as TFTAugment[], gold: [] as TFTAugment[], prismatic: [] as TFTAugment[] };
     for (const a of augments) out[a.tier].push(a);
     return out;
   }, [augments]);
 
-  return {
-    ...query,
-    champions,
-    championMap,
-    plannerCodeMap,
-    items: query.data?.items ?? [],
-    traits,
-    traitMap,
-    augments,
-    augmentMap,
-    augmentsByTier,
-    setNumber: query.data?.setNumber ?? CURRENT_SET,
-    setName: query.data?.setName ?? "",
-    isUsingMockData: !query.data,
-  };
+  const value = useMemo<TFTDataContextValue>(
+    () => ({
+      champions,
+      championMap,
+      items,
+      itemMap,
+      traits,
+      traitMap,
+      augments,
+      augmentMap,
+      augmentsByTier,
+      plannerCodeMap,
+      setNumber: query.data?.setNumber ?? CURRENT_SET,
+      setName: query.data?.setName ?? "",
+      isUsingMockData: !query.data,
+      isLoading: query.isLoading,
+      isError: query.isError,
+    }),
+    [
+      champions,
+      championMap,
+      items,
+      itemMap,
+      traits,
+      traitMap,
+      augments,
+      augmentMap,
+      augmentsByTier,
+      plannerCodeMap,
+      query.data,
+      query.isLoading,
+      query.isError,
+    ]
+  );
+
+  return <TFTDataContext.Provider value={value}>{children}</TFTDataContext.Provider>;
+}
+
+/**
+ * Read TFT data + pre-computed lookup Maps. MUST be used inside a
+ * <TFTDataProvider> (mounted at the route root). Throws otherwise — silent
+ * fallback would mask the perf regression of duplicated Map construction.
+ */
+export function useTFTData(): TFTDataContextValue {
+  const ctx = useContext(TFTDataContext);
+  if (!ctx) {
+    throw new Error("useTFTData must be used inside a <TFTDataProvider>");
+  }
+  return ctx;
 }

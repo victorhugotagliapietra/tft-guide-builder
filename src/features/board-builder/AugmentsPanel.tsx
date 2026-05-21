@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { memo, useState, useEffect, useMemo, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Search, X, Sparkles } from "lucide-react";
 import { useTFTData } from "@/features/tft-data/use-tft-data";
@@ -361,7 +361,7 @@ export function AugmentDragOverlay({ augment }: { augment: TFTAugment }) {
 // complete.
 // ---------------------------------------------------------------------------
 
-export function AugmentsPanel() {
+function AugmentsPanelImpl() {
   const { augmentsByTier } = useTFTData();
   const [search, setSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -446,3 +446,6 @@ export function AugmentsPanel() {
     </div>
   );
 }
+
+export const AugmentsPanel = memo(AugmentsPanelImpl);
+

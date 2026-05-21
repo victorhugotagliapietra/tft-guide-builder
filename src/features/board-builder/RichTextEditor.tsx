@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -42,19 +42,52 @@ function ToolbarButton({
   );
 }
 
+// Debounce window for onChange emissions while the user is actively typing.
+// Long enough that "type a sentence" only triggers ~1-2 upstream re-renders,
+// short enough that pause-then-blur feels responsive. onBlur always flushes
+// any pending value immediately so saves never lose the last keystroke.
+const ONCHANGE_DEBOUNCE_MS = 250;
+
 /**
  * Minimal rich text editor (TipTap) with Bold / Italic / Bullet list.
  * - Auto-grows vertically (no scrollbar)
- * - Emits HTML on every change via onChange
+ * - Debounces onChange emissions so upstream state (and the heavy editor
+ *   subtree above us) doesn't re-render on every keystroke
+ * - onBlur synchronously flushes the pending value, so external code that
+ *   reads state on submit always sees the latest HTML
  * - Re-syncs when `value` changes externally (e.g. when loading from API)
  */
-export function RichTextEditor({
+function RichTextEditorImpl({
   value,
   onChange,
   onBlur,
   placeholder,
   className,
 }: Props) {
+  // The latest onChange/onBlur from the parent. Keeping these in refs lets us
+  // construct stable TipTap handlers — TipTap captures handlers ONCE at editor
+  // creation time and we don't want a fresh editor for every parent render.
+  const onChangeRef = useRef(onChange);
+  const onBlurRef = useRef(onBlur);
+  onChangeRef.current = onChange;
+  onBlurRef.current = onBlur;
+
+  // Pending HTML waiting to be flushed via debounced onChange.
+  const pendingHtmlRef = useRef<string | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flush = () => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (pendingHtmlRef.current !== null) {
+      const html = pendingHtmlRef.current;
+      pendingHtmlRef.current = null;
+      onChangeRef.current(html);
+    }
+  };
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -72,8 +105,19 @@ export function RichTextEditor({
       }),
     ],
     content: value || "",
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
-    onBlur: () => onBlur?.(),
+    onUpdate: ({ editor }) => {
+      pendingHtmlRef.current = editor.getHTML();
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(flush, ONCHANGE_DEBOUNCE_MS);
+    },
+    onBlur: () => {
+      // Flush any pending change BEFORE notifying parent of blur, so onBlur
+      // callbacks that persist state see the most-recent HTML.
+      flush();
+      onBlurRef.current?.();
+    },
     editorProps: {
       attributes: {
         class: cn(
@@ -88,6 +132,16 @@ export function RichTextEditor({
       },
     },
   });
+
+  // Ensure a pending change is committed before this editor instance unmounts
+  // (route change, step removal, etc.). Without this the user can lose the
+  // last <250ms of typing if they navigate away mid-debounce.
+  useEffect(() => {
+    return () => {
+      flush();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Resync from outside (e.g., when an API load resets the form)
   useEffect(() => {
@@ -145,11 +199,23 @@ export function RichTextEditor({
   );
 }
 
+// Memoize the editor — TipTap re-creating its instance on every parent render
+// is the worst-case scenario. The wrapper re-renders only when `value` or
+// `placeholder` actually change identity; the parent's onChange identity is
+// captured via ref inside so it doesn't bust the memo.
+export const RichTextEditor = memo(RichTextEditorImpl, (prev, next) => {
+  return (
+    prev.value === next.value &&
+    prev.placeholder === next.placeholder &&
+    prev.className === next.className
+  );
+});
+
 /**
  * Read-only renderer for HTML produced by RichTextEditor.
  * Uses the same prose styling.
  */
-export function RichTextContent({
+export const RichTextContent = memo(function RichTextContent({
   html,
   className,
 }: {
@@ -178,4 +244,4 @@ export function RichTextContent({
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
-}
+});

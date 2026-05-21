@@ -19,11 +19,10 @@ import { Route as GSlugRouteImport } from './routes/g.$slug'
 import { Route as CollectionIdRouteImport } from './routes/collection.$id'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
+import { Route as AuthenticatedCollectionsIndexRouteImport } from './routes/_authenticated/collections/index'
 import { Route as AuthenticatedGuidesNewRouteImport } from './routes/_authenticated/guides.new'
-import { Route as AuthenticatedCollectionsNewRouteImport } from './routes/_authenticated/collections.new'
 import { Route as AuthenticatedGuidesIdEditRouteImport } from './routes/_authenticated/guides.$id.edit'
-import { Route as AuthenticatedCollectionsIdEditRouteImport } from './routes/_authenticated/collections.$id.edit'
+import { Route as AuthenticatedCollectionsIdEditRouteImport } from './routes/_authenticated/collections/$id.edit'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -74,10 +73,10 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedCollectionsRoute =
-  AuthenticatedCollectionsRouteImport.update({
-    id: '/collections',
-    path: '/collections',
+const AuthenticatedCollectionsIndexRoute =
+  AuthenticatedCollectionsIndexRouteImport.update({
+    id: '/collections/',
+    path: '/collections/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedGuidesNewRoute = AuthenticatedGuidesNewRouteImport.update({
@@ -85,12 +84,6 @@ const AuthenticatedGuidesNewRoute = AuthenticatedGuidesNewRouteImport.update({
   path: '/guides/new',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedCollectionsNewRoute =
-  AuthenticatedCollectionsNewRouteImport.update({
-    id: '/new',
-    path: '/new',
-    getParentRoute: () => AuthenticatedCollectionsRoute,
-  } as any)
 const AuthenticatedGuidesIdEditRoute =
   AuthenticatedGuidesIdEditRouteImport.update({
     id: '/guides/$id/edit',
@@ -99,9 +92,9 @@ const AuthenticatedGuidesIdEditRoute =
   } as any)
 const AuthenticatedCollectionsIdEditRoute =
   AuthenticatedCollectionsIdEditRouteImport.update({
-    id: '/$id/edit',
-    path: '/$id/edit',
-    getParentRoute: () => AuthenticatedCollectionsRoute,
+    id: '/collections/$id/edit',
+    path: '/collections/$id/edit',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -109,14 +102,13 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
-  '/collections': typeof AuthenticatedCollectionsRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/collection/$id': typeof CollectionIdRoute
   '/g/$slug': typeof GSlugRoute
   '/profile/$username': typeof ProfileUsernameRoute
-  '/collections/new': typeof AuthenticatedCollectionsNewRoute
   '/guides/new': typeof AuthenticatedGuidesNewRoute
+  '/collections/': typeof AuthenticatedCollectionsIndexRoute
   '/collections/$id/edit': typeof AuthenticatedCollectionsIdEditRoute
   '/guides/$id/edit': typeof AuthenticatedGuidesIdEditRoute
 }
@@ -125,14 +117,13 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
-  '/collections': typeof AuthenticatedCollectionsRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/collection/$id': typeof CollectionIdRoute
   '/g/$slug': typeof GSlugRoute
   '/profile/$username': typeof ProfileUsernameRoute
-  '/collections/new': typeof AuthenticatedCollectionsNewRoute
   '/guides/new': typeof AuthenticatedGuidesNewRoute
+  '/collections': typeof AuthenticatedCollectionsIndexRoute
   '/collections/$id/edit': typeof AuthenticatedCollectionsIdEditRoute
   '/guides/$id/edit': typeof AuthenticatedGuidesIdEditRoute
 }
@@ -143,14 +134,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
-  '/_authenticated/collections': typeof AuthenticatedCollectionsRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/collection/$id': typeof CollectionIdRoute
   '/g/$slug': typeof GSlugRoute
   '/profile/$username': typeof ProfileUsernameRoute
-  '/_authenticated/collections/new': typeof AuthenticatedCollectionsNewRoute
   '/_authenticated/guides/new': typeof AuthenticatedGuidesNewRoute
+  '/_authenticated/collections/': typeof AuthenticatedCollectionsIndexRoute
   '/_authenticated/collections/$id/edit': typeof AuthenticatedCollectionsIdEditRoute
   '/_authenticated/guides/$id/edit': typeof AuthenticatedGuidesIdEditRoute
 }
@@ -161,14 +151,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
-    | '/collections'
     | '/dashboard'
     | '/settings'
     | '/collection/$id'
     | '/g/$slug'
     | '/profile/$username'
-    | '/collections/new'
     | '/guides/new'
+    | '/collections/'
     | '/collections/$id/edit'
     | '/guides/$id/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -177,14 +166,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
-    | '/collections'
     | '/dashboard'
     | '/settings'
     | '/collection/$id'
     | '/g/$slug'
     | '/profile/$username'
-    | '/collections/new'
     | '/guides/new'
+    | '/collections'
     | '/collections/$id/edit'
     | '/guides/$id/edit'
   id:
@@ -194,14 +182,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/signup'
-    | '/_authenticated/collections'
     | '/_authenticated/dashboard'
     | '/_authenticated/settings'
     | '/collection/$id'
     | '/g/$slug'
     | '/profile/$username'
-    | '/_authenticated/collections/new'
     | '/_authenticated/guides/new'
+    | '/_authenticated/collections/'
     | '/_authenticated/collections/$id/edit'
     | '/_authenticated/guides/$id/edit'
   fileRoutesById: FileRoutesById
@@ -289,11 +276,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/collections': {
-      id: '/_authenticated/collections'
+    '/_authenticated/collections/': {
+      id: '/_authenticated/collections/'
       path: '/collections'
-      fullPath: '/collections'
-      preLoaderRoute: typeof AuthenticatedCollectionsRouteImport
+      fullPath: '/collections/'
+      preLoaderRoute: typeof AuthenticatedCollectionsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/guides/new': {
@@ -302,13 +289,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/guides/new'
       preLoaderRoute: typeof AuthenticatedGuidesNewRouteImport
       parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/collections/new': {
-      id: '/_authenticated/collections/new'
-      path: '/new'
-      fullPath: '/collections/new'
-      preLoaderRoute: typeof AuthenticatedCollectionsNewRouteImport
-      parentRoute: typeof AuthenticatedCollectionsRoute
     }
     '/_authenticated/guides/$id/edit': {
       id: '/_authenticated/guides/$id/edit'
@@ -319,43 +299,29 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/collections/$id/edit': {
       id: '/_authenticated/collections/$id/edit'
-      path: '/$id/edit'
+      path: '/collections/$id/edit'
       fullPath: '/collections/$id/edit'
       preLoaderRoute: typeof AuthenticatedCollectionsIdEditRouteImport
-      parentRoute: typeof AuthenticatedCollectionsRoute
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
 
-interface AuthenticatedCollectionsRouteChildren {
-  AuthenticatedCollectionsNewRoute: typeof AuthenticatedCollectionsNewRoute
-  AuthenticatedCollectionsIdEditRoute: typeof AuthenticatedCollectionsIdEditRoute
-}
-
-const AuthenticatedCollectionsRouteChildren: AuthenticatedCollectionsRouteChildren =
-  {
-    AuthenticatedCollectionsNewRoute: AuthenticatedCollectionsNewRoute,
-    AuthenticatedCollectionsIdEditRoute: AuthenticatedCollectionsIdEditRoute,
-  }
-
-const AuthenticatedCollectionsRouteWithChildren =
-  AuthenticatedCollectionsRoute._addFileChildren(
-    AuthenticatedCollectionsRouteChildren,
-  )
-
 interface AuthenticatedRouteChildren {
-  AuthenticatedCollectionsRoute: typeof AuthenticatedCollectionsRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedGuidesNewRoute: typeof AuthenticatedGuidesNewRoute
+  AuthenticatedCollectionsIndexRoute: typeof AuthenticatedCollectionsIndexRoute
+  AuthenticatedCollectionsIdEditRoute: typeof AuthenticatedCollectionsIdEditRoute
   AuthenticatedGuidesIdEditRoute: typeof AuthenticatedGuidesIdEditRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedCollectionsRoute: AuthenticatedCollectionsRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedGuidesNewRoute: AuthenticatedGuidesNewRoute,
+  AuthenticatedCollectionsIndexRoute: AuthenticatedCollectionsIndexRoute,
+  AuthenticatedCollectionsIdEditRoute: AuthenticatedCollectionsIdEditRoute,
   AuthenticatedGuidesIdEditRoute: AuthenticatedGuidesIdEditRoute,
 }
 
